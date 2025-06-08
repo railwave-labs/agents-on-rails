@@ -3,22 +3,12 @@
 This README would normally document whatever steps are necessary to get the
 application up and running.
 
-Things you may want to cover:
+## License
 
-* Ruby version
+This project is licensed under the **Business Source License 1.1 (BSL 1.1)**.
 
-* System dependencies
+- ✅ You may use, modify, and self-host the code internally — including in production.
+- ❌ You may not offer the code or a derivative as a commercial or hosted service.
+- 🕒 The license automatically converts to [MIT](https://opensource.org/licenses/MIT) **three years after each version’s release**.
 
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+See [LICENSE](./LICENSE) for full terms.

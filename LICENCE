@@ -1,0 +1,31 @@
+Business Source License 1.1
+
+Parameters
+
+Licensor: Magnus Remøe
+
+Licensed Work: The codebase and contents of this repository, titled “Agents on Rails”
+
+Additional Use Grant: You may use, copy, modify, and self-host the Licensed Work in production within your own organization, including for commercial purposes, provided that you do not offer the Licensed Work or any derivative as a hosted or commercial service to third parties.
+
+Change Date: Three years from the date of each version's release
+
+Change License: MIT License
+
+Terms
+
+The Licensor grants you the rights to use the Licensed Work under the terms of the Business Source License 1.1, provided that the Additional Use Grant applies and you do not violate the Use Limitation stated below.
+
+Use Limitation
+
+You may not use the Licensed Work for providing any software-as-a-service (SaaS), platform-as-a-service (PaaS), or similar hosting or commercial offering of the Licensed Work or any modified version of it to third parties.
+
+Change Date and License
+
+After the Change Date, each version of the Licensed Work will automatically become available under the MIT License, as defined by the Open Source Initiative.
+
+This license does not grant you any trademark or branding rights. You may not use the name “Agents on Rails” or any contributor’s names or logos to promote your own derivative works without prior written permission.
+
+---
+
+This software is provided “as is”, without warranty of any kind, express or implied.
