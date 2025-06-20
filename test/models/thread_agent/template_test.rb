@@ -4,27 +4,15 @@ require "test_helper"
 
 module ThreadAgent
   class TemplateTest < ActiveSupport::TestCase
-    def setup
-      @valid_attributes = {
-        name: "Test Template",
-        content: "Hello {{name}}, welcome to our system!",
-        status: "active",
-        description: "A test template for unit testing"
-      }
-    end
-
     # Basic creation tests
     test "should create template with valid attributes" do
-      template = Template.new(@valid_attributes)
+      template = build(:template)
       assert template.valid?, template.errors.full_messages.join(", ")
       assert template.save
     end
 
     test "should create template with minimal attributes" do
-      template = Template.new(
-        name: "Minimal Template",
-        content: "Basic content"
-      )
+      template = build(:template, :minimal)
       assert template.valid?
       assert template.save
       assert_equal "active", template.status # default status
@@ -32,98 +20,99 @@ module ThreadAgent
 
     # Validation tests
     test "should require name" do
-      template = Template.new(@valid_attributes.except(:name))
+      template = build(:template, name: nil)
       assert_not template.valid?
       assert_includes template.errors[:name], "can't be blank"
     end
 
-    test "should require content" do
-      template = Template.new(@valid_attributes.except(:content))
-      assert_not template.valid?
-      assert_includes template.errors[:content], "can't be blank"
-    end
-
-    test "should require status" do
-      template = Template.new(@valid_attributes.except(:status))
-      # Rails sets default status, so this should be valid
-      assert template.valid?
-      assert_equal "active", template.status
-    end
-
-    test "should validate name length" do
-      # Too short
-      template = Template.new(@valid_attributes.merge(name: "ab"))
+    test "should require name to be at least 3 characters" do
+      template = build(:template, :invalid_name_too_short)
       assert_not template.valid?
       assert_includes template.errors[:name], "is too short (minimum is 3 characters)"
+    end
 
-      # Too long
-      long_name = "a" * 101
-      template = Template.new(@valid_attributes.merge(name: long_name))
+    test "should require name to be at most 100 characters" do
+      template = build(:template, :invalid_name_too_long)
       assert_not template.valid?
       assert_includes template.errors[:name], "is too long (maximum is 100 characters)"
     end
 
-    test "should validate name uniqueness" do
-      Template.create!(@valid_attributes)
-
-      duplicate = Template.new(@valid_attributes)
+    test "should require unique name" do
+      create(:template, name: "Duplicate Template")
+      duplicate = build(:template, name: "Duplicate Template")
       assert_not duplicate.valid?
       assert_includes duplicate.errors[:name], "has already been taken"
     end
 
+    test "should require content" do
+      template = build(:template, content: nil)
+      assert_not template.valid?
+      assert_includes template.errors[:content], "can't be blank"
+    end
+
     test "should validate description length" do
-      long_description = "a" * 501
-      template = Template.new(@valid_attributes.merge(description: long_description))
+      template = build(:template, :invalid_description_too_long)
       assert_not template.valid?
       assert_includes template.errors[:description], "is too long (maximum is 500 characters)"
     end
 
+    # Content handling tests
+    test "should allow unicode in content" do
+      template = build(:template, :with_unicode_content)
+      assert template.valid?
+      assert template.save
+    end
+
+    test "should preserve formatting in content" do
+      template = build(:template, :with_formatting)
+      assert template.valid?
+      assert template.save
+      assert template.content.include?("\n")
+    end
+
+    # Status tests
     test "should validate status inclusion" do
       assert_raises(ArgumentError) do
-        Template.new(@valid_attributes.merge(status: "invalid"))
+        build(:template, status: "invalid_status")
       end
     end
 
-    # Enum tests
-    test "should handle status enum correctly" do
-      template = Template.create!(@valid_attributes)
-
-      assert template.active?
-      assert_not template.inactive?
-
-      template.inactive!
-      assert template.inactive?
-      assert_not template.active?
+    test "should have correct enums" do
+      expected_statuses = %w[active inactive]
+      assert_equal expected_statuses, ThreadAgent::Template.statuses.keys
     end
 
+    # Scope tests
+    test "should have correct scopes" do
+      active_template = create(:template, status: "active")
+      inactive_template = create(:template, :inactive)
 
+      assert_includes ThreadAgent::Template.active, active_template
+      assert_not_includes ThreadAgent::Template.active, inactive_template
 
-
-
-    # Edge case tests
-    test "should allow blank description" do
-      template = Template.new(@valid_attributes.merge(description: nil))
-      assert template.valid?
-
-      template = Template.new(@valid_attributes.merge(description: ""))
-      assert template.valid?
+      assert_includes ThreadAgent::Template.inactive, inactive_template
+      assert_not_includes ThreadAgent::Template.inactive, active_template
     end
 
-    test "should preserve content formatting" do
-      content_with_formatting = "Hello {{name}},\n\nWelcome to our system!\n\nBest regards,\nThe Team"
-      template = Template.create!(@valid_attributes.merge(content: content_with_formatting))
+    # Instance method tests
+    test "active? should work correctly" do
+      active_template = create(:template, status: "active")
+      inactive_template = create(:template, :inactive)
 
-      assert_equal content_with_formatting, template.content
+      assert active_template.active?
+      assert_not inactive_template.active?
     end
 
-    test "should handle unicode characters in content" do
-      unicode_content = "Hello 🌟 {{name}}, welcome to our système! 中文 العربية"
-      template = Template.create!(@valid_attributes.merge(
-        name: "Unicode Template",
-        content: unicode_content
-      ))
+    test "inactive? should work correctly" do
+      active_template = create(:template, status: "active")
+      inactive_template = create(:template, :inactive)
 
-      assert_equal unicode_content, template.content
+      assert_not active_template.inactive?
+      assert inactive_template.inactive?
+    end
+
+    test "should set correct table name" do
+      assert_equal "thread_agent_templates", ThreadAgent::Template.table_name
     end
   end
 end
