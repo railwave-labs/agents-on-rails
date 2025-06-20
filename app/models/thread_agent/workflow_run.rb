@@ -14,11 +14,11 @@ module ThreadAgent
     }
 
     # Validations
-    validates :status, presence: true, inclusion: { in: statuses.keys }
+    validates :status, presence: true
     validates :workflow_name, presence: true, length: { minimum: 1, maximum: 255 }
     validates :error_message, length: { maximum: 2000 }, allow_nil: true
-    validates :thread_id, length: { maximum: 255 }, allow_nil: true
-    validates :external_id, length: { maximum: 255 }, allow_nil: true
+    validates :slack_message_id, length: { maximum: 255 }, allow_blank: true
+    validates :slack_channel_id, length: { maximum: 255 }, allow_blank: true
 
     # Conditional validations
     validates :error_message, presence: true, if: :failed?
@@ -26,10 +26,9 @@ module ThreadAgent
 
     # Scopes for common queries
     scope :active, -> { where(status: %w[pending running]) }
-    scope :completed_successfully, -> { where(status: "completed") }
-    scope :failed_runs, -> { where(status: "failed") }
-    scope :by_thread, ->(thread_id) { where(thread_id: thread_id) }
     scope :by_workflow, ->(name) { where(workflow_name: name) }
+    scope :by_slack_channel, ->(channel_id) { where(slack_channel_id: channel_id) }
+    scope :by_slack_message, ->(message_id) { where(slack_message_id: message_id) }
 
     # Instance methods
     def duration
@@ -53,7 +52,7 @@ module ThreadAgent
       update!(
         status: :completed,
         finished_at: Time.current,
-        output_payload: output_data
+        output_data: output_data
       )
     end
 
@@ -96,13 +95,13 @@ module ThreadAgent
     end
 
     # Class methods
-    def self.create_for_workflow(workflow_name, thread_id: nil, input_data: nil, external_id: nil)
+    def self.create_for_workflow(workflow_name, slack_message_id: nil, slack_channel_id: nil, input_data: nil)
       create!(
         workflow_name: workflow_name,
         status: :pending,
-        thread_id: thread_id,
-        input_payload: input_data,
-        external_id: external_id,
+        slack_message_id: slack_message_id,
+        slack_channel_id: slack_channel_id,
+        input_data: input_data,
         steps: []
       )
     end
