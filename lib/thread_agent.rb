@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "thread_agent/result"
+
 module ThreadAgent
   class << self
     def configuration

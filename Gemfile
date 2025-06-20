@@ -67,4 +67,7 @@ group :test do
 
   # Fixtures replacement with a straightforward definition syntax
   gem "factory_bot_rails"
+
+  # Mocking library for cleaner test doubles
+  gem "mocha"
 end
