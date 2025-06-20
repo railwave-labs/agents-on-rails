@@ -5,6 +5,7 @@ Rails.application.config.to_prepare do
     config.slack_client_id = ENV.fetch("THREAD_AGENT_SLACK_CLIENT_ID", nil)
     config.slack_client_secret = ENV.fetch("THREAD_AGENT_SLACK_CLIENT_SECRET", nil)
     config.slack_signing_secret = ENV.fetch("THREAD_AGENT_SLACK_SIGNING_SECRET", nil)
+    config.slack_bot_token = ENV.fetch("THREAD_AGENT_SLACK_BOT_TOKEN", nil)
 
     config.openai_api_key = ENV.fetch("THREAD_AGENT_OPENAI_API_KEY", nil)
     config.openai_model = ENV.fetch("THREAD_AGENT_OPENAI_MODEL", "gpt-4o-mini")
