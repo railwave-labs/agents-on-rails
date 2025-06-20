@@ -91,28 +91,6 @@ module ThreadAgent
       assert_includes result, workspace
     end
 
-    test "find_by_workspace_id should return workspace with matching notion_workspace_id" do
-      workspace = create(:notion_workspace, notion_workspace_id: "workspace_123")
-      found = NotionWorkspace.find_by_workspace_id("workspace_123")
-      assert_equal workspace, found
-    end
-
-    test "find_by_workspace_id should return nil when no match found" do
-      found = NotionWorkspace.find_by_workspace_id("nonexistent")
-      assert_nil found
-    end
-
-    test "find_by_slack_team should return workspace with matching slack_team_id" do
-      workspace = create(:notion_workspace, slack_team_id: "T12345678")
-      found = NotionWorkspace.find_by_slack_team("T12345678")
-      assert_equal workspace, found
-    end
-
-    test "find_by_slack_team should return nil when no match found" do
-      found = NotionWorkspace.find_by_slack_team("nonexistent")
-      assert_nil found
-    end
-
     test "create_workspace! should create valid workspace with all required attributes" do
       workspace = NotionWorkspace.create_workspace!(
         name: "New Workspace",

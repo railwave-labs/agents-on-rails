@@ -19,10 +19,6 @@ module ThreadAgent
     scope :by_database_id, ->(database_id) { where(notion_database_id: database_id) }
     scope :by_workspace, ->(workspace) { where(notion_workspace: workspace) }
 
-    def self.find_by_database_id(database_id)
-      find_by(notion_database_id: database_id)
-    end
-
     def self.create_database!(workspace:, name:, notion_database_id:)
       create!(
         notion_workspace: workspace,

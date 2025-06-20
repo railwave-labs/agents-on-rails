@@ -68,17 +68,6 @@ module ThreadAgent
     end
 
     # Class method tests
-    test "find_by_database_id should return database with matching notion_database_id" do
-      database = create(:notion_database, notion_database_id: "db_123")
-      found = NotionDatabase.find_by_database_id("db_123")
-      assert_equal database, found
-    end
-
-    test "find_by_database_id should return nil when no match found" do
-      found = NotionDatabase.find_by_database_id("nonexistent")
-      assert_nil found
-    end
-
     test "create_database! should create valid database with all required attributes" do
       workspace = create(:notion_workspace)
       database = NotionDatabase.create_database!(

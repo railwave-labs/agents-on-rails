@@ -21,14 +21,6 @@ module ThreadAgent
     scope :by_workspace_id, ->(workspace_id) { where(notion_workspace_id: workspace_id) }
     scope :by_slack_team, ->(team_id) { where(slack_team_id: team_id) }
 
-    def self.find_by_workspace_id(workspace_id)
-      find_by(notion_workspace_id: workspace_id)
-    end
-
-    def self.find_by_slack_team(team_id)
-      find_by(slack_team_id: team_id)
-    end
-
     def self.active_for_slack_team(team_id)
       active.find_by(slack_team_id: team_id)
     end
