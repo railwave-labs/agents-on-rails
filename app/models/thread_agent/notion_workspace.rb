@@ -12,7 +12,7 @@ module ThreadAgent
       error: "error"
     }
 
-    validates :name, presence: true, length: { minimum: 1, maximum: 255 }
+    validates :name, presence: true, length: { minimum: 3, maximum: 100 }
     validates :notion_workspace_id, presence: true, length: { maximum: 255 }, uniqueness: true
     validates :access_token, presence: true
     validates :slack_team_id, presence: true, length: { maximum: 255 }, uniqueness: true

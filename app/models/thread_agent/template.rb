@@ -11,9 +11,12 @@ module ThreadAgent
       inactive: "inactive"
     }
 
-    validates :name, presence: true, length: { minimum: 1, maximum: 255 }
+    validates :name, presence: true, length: { minimum: 3, maximum: 100 }, uniqueness: true
     validates :content, presence: true
     validates :status, presence: true
     validates :description, length: { maximum: 500 }, allow_blank: true
+
+    scope :active, -> { where(status: :active) }
+    scope :inactive, -> { where(status: :inactive) }
   end
 end
