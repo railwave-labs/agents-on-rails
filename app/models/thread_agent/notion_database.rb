@@ -16,7 +16,6 @@ module ThreadAgent
     validates :notion_database_id, presence: true, length: { maximum: 255 }, uniqueness: { scope: :notion_workspace_id }
     validates :status, presence: true
 
-    scope :active, -> { where(status: :active) }
     scope :by_database_id, ->(database_id) { where(notion_database_id: database_id) }
     scope :by_workspace, ->(workspace) { where(notion_workspace: workspace) }
 

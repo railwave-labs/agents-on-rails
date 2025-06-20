@@ -15,8 +15,5 @@ module ThreadAgent
     validates :content, presence: true
     validates :status, presence: true
     validates :description, length: { maximum: 500 }, allow_blank: true
-
-    scope :active, -> { where(status: :active) }
-    scope :inactive, -> { where(status: :inactive) }
   end
 end

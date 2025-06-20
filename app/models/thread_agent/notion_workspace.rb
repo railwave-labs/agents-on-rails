@@ -18,9 +18,9 @@ module ThreadAgent
     validates :slack_team_id, presence: true, length: { maximum: 255 }, uniqueness: true
     validates :status, presence: true
 
-    scope :active, -> { where(status: :active) }
     scope :by_workspace_id, ->(workspace_id) { where(notion_workspace_id: workspace_id) }
     scope :by_slack_team, ->(team_id) { where(slack_team_id: team_id) }
+
     def self.find_by_workspace_id(workspace_id)
       find_by(notion_workspace_id: workspace_id)
     end
