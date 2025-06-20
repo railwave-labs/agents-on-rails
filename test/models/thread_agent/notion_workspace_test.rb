@@ -4,7 +4,6 @@ require "test_helper"
 
 module ThreadAgent
   class NotionWorkspaceTest < ActiveSupport::TestCase
-    # Validation tests
     test "should be valid with valid attributes" do
       workspace = build(:notion_workspace)
       assert workspace.valid?
@@ -80,7 +79,6 @@ module ThreadAgent
       assert_equal "active", workspace.status
     end
 
-    # Scope tests
     test "by_workspace_id scope should find workspace by notion_workspace_id" do
       workspace = create(:notion_workspace, notion_workspace_id: "workspace_123")
       result = NotionWorkspace.by_workspace_id("workspace_123")
@@ -93,7 +91,6 @@ module ThreadAgent
       assert_includes result, workspace
     end
 
-    # Class method tests
     test "find_by_workspace_id should return workspace with matching notion_workspace_id" do
       workspace = create(:notion_workspace, notion_workspace_id: "workspace_123")
       found = NotionWorkspace.find_by_workspace_id("workspace_123")

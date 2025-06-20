@@ -13,7 +13,6 @@ class CreateThreadAgentWorkflowRuns < ActiveRecord::Migration[8.0]
       t.timestamps null: false
     end
 
-    # Indexes for performance
     add_index :thread_agent_workflow_runs, [ :workflow_name, :status ]
     add_index :thread_agent_workflow_runs, :status
     add_index :thread_agent_workflow_runs, :started_at

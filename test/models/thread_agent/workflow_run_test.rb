@@ -51,7 +51,6 @@ module ThreadAgent
       assert_equal expected_statuses, ThreadAgent::WorkflowRun.statuses.keys
     end
 
-    # Scope tests
     test "should have correct scopes" do
       pending_run = create(:workflow_run, status: "pending")
       running_run = create(:workflow_run, :running)
@@ -69,7 +68,6 @@ module ThreadAgent
       assert_not_includes ThreadAgent::WorkflowRun.running, pending_run
     end
 
-    # Instance method tests for status checks
     test "status query methods should work correctly" do
       pending_run = create(:workflow_run, status: "pending")
       running_run = create(:workflow_run, :running)

@@ -4,12 +4,16 @@ FactoryBot.define do
   factory :notion_workspace, class: "ThreadAgent::NotionWorkspace" do
     name { "Test Workspace" }
     sequence(:notion_workspace_id) { |n| "workspace_#{n}" }
-    access_token { "secret_token_abc" }
+    access_token { "test_access_token" }
     sequence(:slack_team_id) { |n| "T#{n.to_s.rjust(8, '0')}" }
     status { "active" }
 
     trait :inactive do
       status { "inactive" }
+    end
+
+    trait :error do
+      status { "error" }
     end
 
     trait :with_long_name do

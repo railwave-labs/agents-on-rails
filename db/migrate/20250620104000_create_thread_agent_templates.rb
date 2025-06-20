@@ -5,11 +5,11 @@ class CreateThreadAgentTemplates < ActiveRecord::Migration[8.0]
       t.text :description, limit: 500
       t.text :content, null: false
       t.string :status, null: false, default: "active"
+      t.references :notion_database, null: true, foreign_key: { to_table: :thread_agent_notion_databases }
 
       t.timestamps null: false
     end
 
-    # Indexes for performance
     add_index :thread_agent_templates, :name, unique: true
     add_index :thread_agent_templates, :status
   end

@@ -4,17 +4,14 @@ module ThreadAgent
   class Template < ApplicationRecord
     self.table_name = "thread_agent_templates"
 
-    belongs_to :notion_database, class_name: "ThreadAgent::NotionDatabase"
+    belongs_to :notion_database, optional: true
 
-    # Simple enum for template status
     enum :status, {
       active: "active",
       inactive: "inactive"
     }
 
-    # Validations
-    validates :name, presence: true, length: { in: 3..100 }
-    validates :name, uniqueness: true
+    validates :name, presence: true, length: { minimum: 1, maximum: 255 }
     validates :content, presence: true
     validates :status, presence: true
     validates :description, length: { maximum: 500 }, allow_blank: true

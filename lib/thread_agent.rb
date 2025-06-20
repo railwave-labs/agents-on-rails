@@ -62,7 +62,6 @@ module ThreadAgent
     end
   end
 
-  # Exception classes for the module
   class Error < StandardError; end
   class ConfigurationError < Error; end
   class SlackError < Error; end

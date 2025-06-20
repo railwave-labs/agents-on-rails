@@ -39,7 +39,6 @@ class ThreadAgentTest < ActiveSupport::TestCase
   end
 
   test "configuration reads from environment variables" do
-    # Test with actual ENV values if set, otherwise defaults
     config = ThreadAgent.configuration
 
     # These should match the ENV fetch calls in Configuration#initialize
