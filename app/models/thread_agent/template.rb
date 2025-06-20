@@ -4,6 +4,8 @@ module ThreadAgent
   class Template < ApplicationRecord
     self.table_name = "thread_agent_templates"
 
+    belongs_to :notion_database, class_name: "ThreadAgent::NotionDatabase"
+
     # Simple enum for template status
     enum :status, {
       active: "active",

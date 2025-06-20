@@ -10,7 +10,19 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_20_132202) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_20_141452) do
+  create_table "thread_agent_notion_databases", force: :cascade do |t|
+    t.integer "notion_workspace_id", null: false
+    t.string "notion_database_id", limit: 255, null: false
+    t.string "name", limit: 255, null: false
+    t.string "status", default: "active", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["notion_workspace_id", "notion_database_id"], name: "idx_on_notion_workspace_id_notion_database_id_ced92d668a", unique: true
+    t.index ["notion_workspace_id"], name: "index_thread_agent_notion_databases_on_notion_workspace_id"
+    t.index ["status"], name: "index_thread_agent_notion_databases_on_status"
+  end
+
   create_table "thread_agent_notion_workspaces", force: :cascade do |t|
     t.string "name", limit: 100, null: false
     t.string "notion_workspace_id", limit: 255, null: false
@@ -31,7 +43,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_20_132202) do
     t.string "status", default: "active", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "notion_database_id", null: false
     t.index ["name"], name: "index_thread_agent_templates_on_name", unique: true
+    t.index ["notion_database_id"], name: "index_thread_agent_templates_on_notion_database_id"
     t.index ["status"], name: "index_thread_agent_templates_on_status"
   end
 
@@ -53,4 +67,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_20_132202) do
     t.index ["status"], name: "index_thread_agent_workflow_runs_on_status"
     t.index ["workflow_name", "status"], name: "index_thread_agent_workflow_runs_on_workflow_name_and_status"
   end
+
+  add_foreign_key "thread_agent_notion_databases", "thread_agent_notion_workspaces", column: "notion_workspace_id"
+  add_foreign_key "thread_agent_templates", "thread_agent_notion_databases", column: "notion_database_id"
 end

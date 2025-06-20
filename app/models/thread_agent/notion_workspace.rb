@@ -4,6 +4,9 @@ module ThreadAgent
   class NotionWorkspace < ApplicationRecord
     self.table_name = "thread_agent_notion_workspaces"
 
+    # Associations
+    has_many :notion_databases, class_name: "ThreadAgent::NotionDatabase", dependent: :destroy
+
     # Enums for status tracking
     enum :status, {
       active: "active",

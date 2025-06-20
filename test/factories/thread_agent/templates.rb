@@ -2,6 +2,7 @@
 
 FactoryBot.define do
   factory :template, class: "ThreadAgent::Template" do
+    association :notion_database, factory: :notion_database
     sequence(:name) { |n| "Test Template #{n}" }
     content { "Hello {{name}}, welcome to our system!" }
     status { "active" }
