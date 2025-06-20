@@ -10,7 +10,20 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_20_130321) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_20_132202) do
+  create_table "thread_agent_notion_workspaces", force: :cascade do |t|
+    t.string "name", limit: 100, null: false
+    t.string "notion_workspace_id", limit: 255, null: false
+    t.text "access_token", null: false
+    t.string "slack_team_id", limit: 255, null: false
+    t.string "status", default: "active", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["notion_workspace_id"], name: "index_thread_agent_notion_workspaces_on_notion_workspace_id", unique: true
+    t.index ["slack_team_id"], name: "index_thread_agent_notion_workspaces_on_slack_team_id", unique: true
+    t.index ["status"], name: "index_thread_agent_notion_workspaces_on_status"
+  end
+
   create_table "thread_agent_templates", force: :cascade do |t|
     t.string "name", limit: 100, null: false
     t.text "description", limit: 500
