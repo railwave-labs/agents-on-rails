@@ -2,35 +2,53 @@
 
 module ThreadAgent
   class ProcessWorkflowJob < ApplicationJob
+    include SafetyNetRetries
+
     queue_as :default
-
-    # Job-level retry configuration as safety net for catastrophic failures
-    # after service-level retries are exhausted
-
-    # Slack service errors (after service-level retries fail)
-    retry_on ThreadAgent::SlackError, wait: 30.seconds, attempts: 3
-
-    # OpenAI service errors (after service-level retries fail)
-    retry_on ThreadAgent::OpenaiError, wait: 30.seconds, attempts: 3
-
-    # Generic network/connection errors that might bypass service-level handling
-    retry_on Net::ReadTimeout, Net::OpenTimeout, Timeout::Error, wait: 30.seconds, attempts: 3
-    retry_on Errno::ECONNRESET, Errno::ECONNREFUSED, SocketError, wait: 30.seconds, attempts: 3
-
-    # Faraday errors (HTTP client used by both services)
-    retry_on Faraday::Error, wait: 30.seconds, attempts: 3
-
-    # Database connection issues
-    retry_on ActiveRecord::ConnectionTimeoutError, wait: 30.seconds, attempts: 3
 
     def perform(payload)
       Rails.logger.info("ProcessWorkflowJob received: #{payload.inspect}")
 
       ActiveSupport::Notifications.instrument("thread_agent.workflow.process", payload) do
-        # TODO: Implement actual workflow processing (Slack thread → Notion page transformation)
+        process_workflow(payload)
       end
 
       true
+    end
+
+    private
+
+    def process_workflow(payload)
+      workflow_run_id = payload[:workflow_run_id]
+      thread_data = payload[:thread_data]
+
+      # Load the workflow run with its template
+      workflow_run = ThreadAgent::WorkflowRun.find(workflow_run_id)
+      template = workflow_run.template
+
+      # Transform thread content using OpenAI
+      openai_service = create_openai_service
+      transformed_content = openai_service.transform_content(
+        template: template,
+        thread_data: thread_data
+      )
+
+      Rails.logger.info("OpenAI transformation completed for workflow_run_id: #{workflow_run_id}")
+
+      # TODO: Send transformed content to Notion
+      # This will be implemented when NotionService is ready
+      Rails.logger.info("Transformed content ready for Notion: #{transformed_content.length} characters")
+
+      transformed_content
+    end
+
+    def create_openai_service
+      ThreadAgent::Openai::Service.new(
+        api_key: ThreadAgent.configuration.openai_api_key,
+        model: ThreadAgent.configuration.openai_model,
+        timeout: 30,
+        max_retries: 3
+      )
     end
   end
 end
