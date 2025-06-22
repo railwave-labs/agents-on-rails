@@ -278,12 +278,18 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
   end
 
   test "raises error when bot token is missing" do
+    # Temporarily stub the configuration to ensure nil values
+    ThreadAgent.configuration.stubs(:slack_bot_token).returns(nil)
+
     assert_raises ThreadAgent::SlackError do
       ThreadAgent::Slack::Service.new(bot_token: nil, signing_secret: "secret")
     end
   end
 
   test "raises error when signing secret is missing" do
+    # Temporarily stub the configuration to ensure nil values
+    ThreadAgent.configuration.stubs(:slack_signing_secret).returns(nil)
+
     assert_raises ThreadAgent::SlackError do
       ThreadAgent::Slack::Service.new(bot_token: "token", signing_secret: nil)
     end
@@ -1097,13 +1103,12 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         }
       }
 
-      # Mock JSON.parse to raise an exception to simulate processing error
+      # Mock Rails.logger to expect error logging
       Rails.logger.expects(:error).with(regexp_matches(/Error processing modal submission/))
 
-      # Override dig method to raise error
-      payload.define_singleton_method(:dig) do |*args|
-        raise StandardError, "Simulated processing error" if args == [ "view", "state", "values" ]
-        super(*args)
+      # Mock the payload to raise an error during processing
+      payload["view"].define_singleton_method(:dig) do |*args|
+        raise StandardError, "Simulated processing error"
       end
 
       result = @service.handle_modal_submission(payload)
