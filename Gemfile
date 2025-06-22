@@ -18,6 +18,8 @@ gem "stimulus-rails"
 gem "tailwindcss-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
+# Ruby client for Slack Web and RTM APIs [https://github.com/slack-ruby/slack-ruby-client]
+gem "slack-ruby-client"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
@@ -65,4 +67,7 @@ group :test do
 
   # Fixtures replacement with a straightforward definition syntax
   gem "factory_bot_rails"
+
+  # Mocking library for cleaner test doubles
+  gem "mocha"
 end

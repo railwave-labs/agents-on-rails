@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "thread_agent/result"
+
 module ThreadAgent
   class << self
     def configuration
@@ -25,7 +27,7 @@ module ThreadAgent
   end
 
   class Configuration
-    attr_accessor :slack_client_id, :slack_client_secret, :slack_signing_secret,
+    attr_accessor :slack_client_id, :slack_client_secret, :slack_signing_secret, :slack_bot_token,
                   :openai_api_key, :openai_model,
                   :notion_client_id, :notion_client_secret,
                   :default_timeout, :max_retries
@@ -34,6 +36,7 @@ module ThreadAgent
       @slack_client_id = ENV.fetch("THREAD_AGENT_SLACK_CLIENT_ID", nil)
       @slack_client_secret = ENV.fetch("THREAD_AGENT_SLACK_CLIENT_SECRET", nil)
       @slack_signing_secret = ENV.fetch("THREAD_AGENT_SLACK_SIGNING_SECRET", nil)
+      @slack_bot_token = ENV.fetch("THREAD_AGENT_SLACK_BOT_TOKEN", nil)
       @openai_api_key = ENV.fetch("THREAD_AGENT_OPENAI_API_KEY", nil)
       @openai_model = ENV.fetch("THREAD_AGENT_OPENAI_MODEL", "gpt-4o-mini")
       @notion_client_id = ENV.fetch("THREAD_AGENT_NOTION_CLIENT_ID", nil)
