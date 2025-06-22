@@ -69,11 +69,11 @@ module ThreadAgent
         begin
           modal_payload = ModalBuilder.build_thread_capture_modal(workspaces, templates)
 
-          response = retry_handler.with_retries do
-            slack_client.client.views_open(
+          response = retry_handler.retry_with do
+            slack_client.client.views_open({
               trigger_id: trigger_id,
               view: modal_payload
-            )
+            })
           end
 
           ThreadAgent::Result.success(response)

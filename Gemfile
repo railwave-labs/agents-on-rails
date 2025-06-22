@@ -20,6 +20,8 @@ gem "tailwindcss-rails"
 gem "jbuilder"
 # Ruby client for Slack Web and RTM APIs [https://github.com/slack-ruby/slack-ruby-client]
 gem "slack-ruby-client"
+# OpenAI API client [https://github.com/alexrudall/ruby-openai]
+gem "ruby-openai", "~> 7.0"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

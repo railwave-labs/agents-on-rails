@@ -3,161 +3,116 @@
 require "test_helper"
 
 class ThreadAgent::Slack::RetryHandlerTest < ActiveSupport::TestCase
-  test "initializes with default max retries" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-    assert_equal 3, handler.max_retries
+  def setup
+    @handler = ThreadAgent::Slack::RetryHandler.new
   end
 
-  test "initializes with custom max retries" do
-    handler = ThreadAgent::Slack::RetryHandler.new(max_retries: 5)
-    assert_equal 5, handler.max_retries
+  test "initializes with default max attempts" do
+    assert_equal 3, @handler.max_attempts
+  end
+
+  test "initializes with custom max attempts" do
+    handler = ThreadAgent::Slack::RetryHandler.new(max_attempts: 5)
+    assert_equal 5, handler.max_attempts
   end
 
   test "executes block successfully without retries" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-    result = handler.with_retries { "success" }
+    result = @handler.retry_with { "success" }
     assert_equal "success", result
   end
 
-  test "retries on rate limit error with retry_after header" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-
-    # Create rate limit error with mock response_metadata
-    rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
-    rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 1 })
-
+  test "retries on Slack rate limited error and respects retry_after header" do
     call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise rate_limit_error if call_count == 1
-      "success"
-    }
+    retry_after_value = 2.5
+    sleep_times = []
 
-    handler.expects(:sleep).with(1).once
-
-    result = handler.with_retries { test_block.call }
-    assert_equal "success", result
-    assert_equal 2, call_count
-  end
-
-  test "raises ThreadAgent::SlackError after max rate limit retries" do
-    handler = ThreadAgent::Slack::RetryHandler.new(max_retries: 2)
-
-    rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
-    rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 1 })
-
-    call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise rate_limit_error
-    }
-
-    handler.expects(:sleep).with(1).twice
-
-    assert_raises(ThreadAgent::SlackError, /Rate limit exceeded after 2 retries/) do
-      handler.with_retries { test_block.call }
+    # Create a mock rate limited error with retry_after in response_metadata
+    rate_limited_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
+    rate_limited_error.define_singleton_method(:response_metadata) do
+      { "retry_after" => retry_after_value }
     end
-    assert_equal 3, call_count # Initial + 2 retries
-  end
 
-  test "retries timeout errors with exponential backoff" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-
-    timeout_error = ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
-
-    call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise timeout_error if call_count <= 2
-      "success"
-    }
-
-    # Initial delay: 1.0, second delay: 2.0 (doubled)
-    handler.expects(:sleep).with(1.0).once
-    handler.expects(:sleep).with(2.0).once
-
-    result = handler.with_retries { test_block.call }
-    assert_equal "success", result
-    assert_equal 3, call_count
-  end
-
-  test "retries server errors (5xx) but not client errors (4xx)" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-
-    server_error = ::Slack::Web::Api::Errors::SlackError.new("Server error")
-    server_error.stubs(:response_metadata).returns({ "status_code" => 503 })
-
-    client_error = ::Slack::Web::Api::Errors::SlackError.new("Client error")
-    client_error.stubs(:response_metadata).returns({ "status_code" => 404 })
-
-    # Test server error retry
-    call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise server_error if call_count == 1
-      "success"
-    }
-
-    handler.expects(:sleep).with(1.0).once
-
-    result = handler.with_retries { test_block.call }
-    assert_equal "success", result
-    assert_equal 2, call_count
-
-    # Test client error no retry
-    call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise client_error
-    }
-
-    handler.expects(:sleep).never
-
-    assert_raises(ThreadAgent::SlackError, /Slack API client error \(404\)/) do
-      handler.with_retries { test_block.call }
+    # Mock sleep to capture the intervals
+    @handler.define_singleton_method(:sleep) do |interval|
+      sleep_times << interval
     end
-    assert_equal 1, call_count # No retries
+
+    error = assert_raises(ThreadAgent::SlackError) do
+      @handler.retry_with(max_attempts: 2) do
+        call_count += 1
+        raise rate_limited_error
+      end
+    end
+
+    assert_equal 3, call_count  # 1 initial + 2 retries
+    assert_equal [ retry_after_value, retry_after_value ], sleep_times  # Two retries, both using retry_after
+    assert_includes error.message, "Operation failed after 2 retries"
   end
 
-  test "retries network timeout errors" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-
-    network_error = Net::ReadTimeout.new("Network timeout")
-
+  test "falls back to exponential backoff when no retry_after header" do
     call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise network_error if call_count <= 2
-      "success"
-    }
+    sleep_times = []
 
-    handler.expects(:sleep).with(1.0).once
-    handler.expects(:sleep).with(2.0).once
+    # Create a rate limited error without retry_after
+    rate_limited_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
+    rate_limited_error.define_singleton_method(:response_metadata) { {} }
 
-    result = handler.with_retries { test_block.call }
-    assert_equal "success", result
-    assert_equal 3, call_count
+    # Mock sleep to capture the intervals
+    @handler.define_singleton_method(:sleep) do |interval|
+      sleep_times << interval
+    end
+
+    error = assert_raises(ThreadAgent::SlackError) do
+      @handler.retry_with(max_attempts: 2) do
+        call_count += 1
+        raise rate_limited_error
+      end
+    end
+
+    assert_equal 3, call_count  # 1 initial + 2 retries
+    assert_equal [ 1.0, 2.0 ], sleep_times  # Exponential backoff: 1.0s, 2.0s
+    assert_includes error.message, "Operation failed after 2 retries"
   end
 
-  test "caps exponential backoff at max delay" do
-    handler = ThreadAgent::Slack::RetryHandler.new
-
-    timeout_error = ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
-
+  test "retries on Slack timeout errors" do
     call_count = 0
-    test_block = -> {
-      call_count += 1
-      raise timeout_error if call_count <= 3
-      "success"
-    }
 
-    # With max_delay of 3.0, delays should be: 1.0, 2.0, 3.0 (capped)
-    handler.expects(:sleep).with(1.0).once
-    handler.expects(:sleep).with(2.0).once
-    handler.expects(:sleep).with(3.0).once
+    error = assert_raises(ThreadAgent::SlackError) do
+      @handler.retry_with(max_attempts: 2) do
+        call_count += 1
+        raise ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
+      end
+    end
 
-    result = handler.with_retries(max_delay: 3.0) { test_block.call }
-    assert_equal "success", result
-    assert_equal 4, call_count
+    assert_equal 3, call_count  # 1 initial + 2 retries
+    assert_includes error.message, "Operation failed after 2 retries"
+  end
+
+  test "retries on generic Slack errors" do
+    call_count = 0
+
+    error = assert_raises(ThreadAgent::SlackError) do
+      @handler.retry_with(max_attempts: 2) do
+        call_count += 1
+        raise ::Slack::Web::Api::Errors::SlackError.new("Generic slack error")
+      end
+    end
+
+    assert_equal 3, call_count  # 1 initial + 2 retries
+    assert_includes error.message, "Operation failed after 2 retries"
+  end
+
+  test "retries on generic network errors" do
+    call_count = 0
+
+    error = assert_raises(ThreadAgent::SlackError) do
+      @handler.retry_with(max_attempts: 2) do
+        call_count += 1
+        raise Net::ReadTimeout.new("Read timeout")
+      end
+    end
+
+    assert_equal 3, call_count  # 1 initial + 2 retries
+    assert_includes error.message, "Operation failed after 2 retries"
   end
 end

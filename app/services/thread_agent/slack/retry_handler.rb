@@ -2,105 +2,44 @@
 
 module ThreadAgent
   module Slack
-    class RetryHandler
-      DEFAULT_MAX_RETRIES = 3
-      DEFAULT_INITIAL_DELAY = 1.0
-      DEFAULT_MAX_DELAY = 30.0
+    class RetryHandler < ThreadAgent::RetryHandler
+      # Slack-specific retryable errors
+      SLACK_SPECIFIC_ERRORS = [
+        ::Slack::Web::Api::Errors::RateLimited,
+        ::Slack::Web::Api::Errors::TimeoutError,
+        ::Slack::Web::Api::Errors::SlackError
+      ].freeze
 
-      attr_reader :max_retries
+      # Combined Slack-specific and generic retryable errors
+      SLACK_RETRYABLE_ERRORS = (SLACK_SPECIFIC_ERRORS + GENERIC_RETRYABLE_ERRORS).freeze
 
-      def initialize(max_retries: DEFAULT_MAX_RETRIES)
-        @max_retries = max_retries
-      end
-
-      # Execute a block with retry logic and exponential backoff
-      # @param max_retries [Integer] Override the default max retries for this call
-      # @param initial_delay [Float] Override the default initial delay for this call
-      # @param max_delay [Float] Override the default max delay for this call
-      # @return [Object] The result of the block or raises an error
-      def with_retries(max_retries: nil, initial_delay: nil, max_delay: nil)
-        retries = 0
-        max_attempts = max_retries || self.max_retries
-        delay = initial_delay || DEFAULT_INITIAL_DELAY
-        delay_cap = max_delay || DEFAULT_MAX_DELAY
-
-        begin
-          yield
-        rescue ::Slack::Web::Api::Errors::RateLimited => e
-          handle_rate_limited_error(e, retries, max_attempts, delay)
-          retries += 1
-          retry
-        rescue ::Slack::Web::Api::Errors::TimeoutError => e
-          handle_timeout_error(e, retries, max_attempts, delay, delay_cap)
-          retries += 1
-          delay = calculate_next_delay(delay, delay_cap)
-          retry
-        rescue ::Slack::Web::Api::Errors::SlackError => e
-          handle_slack_error(e, retries, max_attempts, delay, delay_cap)
-          retries += 1
-          delay = calculate_next_delay(delay, delay_cap)
-          retry
-        rescue Net::ReadTimeout, Net::OpenTimeout => e
-          handle_network_timeout_error(e, retries, max_attempts, delay, delay_cap)
-          retries += 1
-          delay = calculate_next_delay(delay, delay_cap)
-          retry
-        end
+      def initialize(max_attempts: DEFAULT_MAX_ATTEMPTS)
+        super(
+          max_attempts: max_attempts,
+          retryable_errors: SLACK_RETRYABLE_ERRORS,
+          final_error_class: ThreadAgent::SlackError,
+          jitter: false  # Disable jitter by default for deterministic behavior
+        )
       end
 
       private
 
-      def handle_rate_limited_error(error, retries, max_attempts, delay)
-        retry_after = error.response_metadata&.dig("retry_after") || delay
-
-        if retries < max_attempts
-          sleep retry_after
-        else
-          raise ThreadAgent::SlackError, "Rate limit exceeded after #{retries} retries: #{error.message}"
+      # Override to handle Slack retry_after headers from rate limit responses
+      # @param attempt_count [Integer] Current attempt number (1-based for calculations)
+      # @param base_interval [Float] Base interval in seconds
+      # @param max_interval [Float] Maximum interval in seconds
+      # @param use_jitter [Boolean] Whether to add jitter
+      # @return [Float] Sleep interval in seconds
+      def calculate_interval(attempt_count, base_interval, max_interval, use_jitter)
+        # Check for rate limited error with retry_after header
+        current_exception = $!
+        if current_exception.is_a?(::Slack::Web::Api::Errors::RateLimited)
+          retry_after = current_exception.response_metadata&.dig("retry_after")
+          return retry_after.to_f if retry_after.present?
         end
-      end
 
-      def handle_timeout_error(error, retries, max_attempts, delay, delay_cap)
-        if retries < max_attempts
-          sleep delay
-        else
-          raise ThreadAgent::SlackError, "Timeout error after #{retries} retries: #{error.message}"
-        end
-      end
-
-      def handle_slack_error(error, retries, max_attempts, delay, delay_cap)
-        status_code = error.response_metadata&.dig("status_code")&.to_i
-
-        if server_error?(status_code) && retries < max_attempts
-          sleep delay
-        else
-          error_message = if client_error?(status_code)
-                            "Slack API client error (#{status_code}): #{error.message}"
-          else
-                            "Slack API error after #{retries} retries: #{error.message}"
-          end
-          raise ThreadAgent::SlackError, error_message
-        end
-      end
-
-      def handle_network_timeout_error(error, retries, max_attempts, delay, delay_cap)
-        if retries < max_attempts
-          sleep delay
-        else
-          raise ThreadAgent::SlackError, "Network timeout after #{retries} retries: #{error.message}"
-        end
-      end
-
-      def server_error?(status_code)
-        status_code && status_code >= 500 && status_code < 600
-      end
-
-      def client_error?(status_code)
-        status_code && status_code >= 400 && status_code < 500
-      end
-
-      def calculate_next_delay(current_delay, max_delay)
-        [ current_delay * 2, max_delay ].min
+        # Fall back to exponential backoff from base class
+        super(attempt_count, base_interval, max_interval, use_jitter)
       end
     end
   end
