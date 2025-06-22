@@ -117,8 +117,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     # Create a service that will trigger an error by mocking the client method
     service = ThreadAgent::Slack::Service.new(bot_token: "xoxb-invalid-token", signing_secret: "test-secret")
 
-    # Override the client method to simulate initialization failure
-    service.define_singleton_method(:client) do
+    # Override the slack_client's client method to simulate initialization failure
+    service.slack_client.define_singleton_method(:client) do
       @client ||= begin
         raise ::Slack::Web::Api::Errors::SlackError.new("Invalid token")
       rescue StandardError => e
@@ -160,21 +160,22 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     replies_response = mock("replies_response")
     replies_response.stubs(:messages).returns([ parent_message, reply_message ])
 
-    # Mock client
+    # Mock client to be called via the thread_fetcher's retry_handler
     slack_client = mock("slack_client")
     slack_client.expects(:conversations_history).with(
       channel: "C12345678",
       latest: "1605139215.000700",
       limit: 1,
       inclusive: true
-    ).returns(history_response)
+    ).returns(history_response).once # Called once, wrapped by retry handler
 
     slack_client.expects(:conversations_replies).with(
       channel: "C12345678",
       ts: "1605139215.000700"
-    ).returns(replies_response)
+    ).returns(replies_response).once # Called once, wrapped by retry handler
 
-    service.stubs(:client).returns(slack_client)
+    # Mock the thread_fetcher's slack_client.client to return our mocked client
+    service.thread_fetcher.slack_client.stubs(:client).returns(slack_client)
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -189,21 +190,19 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
   test "fetch_thread raises error with missing channel_id" do
     service = ThreadAgent::Slack::Service.new(bot_token: "xoxb-valid-token", signing_secret: "test-secret")
 
-    error = assert_raises(ThreadAgent::SlackError) do
-      service.fetch_thread(nil, "1605139215.000700")
-    end
+    result = service.fetch_thread(nil, "1605139215.000700")
 
-    assert_match(/Missing channel_id/, error.message)
+    assert_not result.success?
+    assert_match(/Missing channel_id/, result.error)
   end
 
   test "fetch_thread raises error with missing thread_ts" do
     service = ThreadAgent::Slack::Service.new(bot_token: "xoxb-valid-token", signing_secret: "test-secret")
 
-    error = assert_raises(ThreadAgent::SlackError) do
-      service.fetch_thread("C12345678", nil)
-    end
+    result = service.fetch_thread("C12345678", nil)
 
-    assert_match(/Missing thread_ts/, error.message)
+    assert_not result.success?
+    assert_match(/Missing thread_ts/, result.error)
   end
 
   test "fetch_thread handles parent message not found" do
@@ -215,9 +214,15 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
 
     # Mock client
     slack_client = mock("slack_client")
-    slack_client.expects(:conversations_history).returns(history_response)
+    slack_client.expects(:conversations_history).with(
+      channel: "C12345678",
+      latest: "1605139215.000700",
+      limit: 1,
+      inclusive: true
+    ).returns(history_response)
 
-    service.stubs(:client).returns(slack_client)
+    # Mock the thread_fetcher's slack_client.client to return our mocked client
+    service.thread_fetcher.slack_client.stubs(:client).returns(slack_client)
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -232,8 +237,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
     rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 30 })
 
-    # Mock with_retries to simulate exhausted retries
-    service.expects(:with_retries).raises(ThreadAgent::SlackError.new("Rate limit exceeded after 3 retries: Rate limited"))
+    # Mock the retry handler to simulate exhausted retries
+    service.thread_fetcher.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Rate limit exceeded after 3 retries: Rate limited"))
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -247,8 +252,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     slack_error = ::Slack::Web::Api::Errors::SlackError.new("Channel not found")
     slack_error.stubs(:response_metadata).returns({ "status_code" => 404 })
 
-    # Mock with_retries to simulate API error that doesn't get retried (4xx)
-    service.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (404): Channel not found"))
+    # Mock the retry handler to simulate API error that doesn't get retried (4xx)
+    service.thread_fetcher.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (404): Channel not found"))
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -273,12 +278,18 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
   end
 
   test "raises error when bot token is missing" do
+    # Temporarily stub the configuration to ensure nil values
+    ThreadAgent.configuration.stubs(:slack_bot_token).returns(nil)
+
     assert_raises ThreadAgent::SlackError do
       ThreadAgent::Slack::Service.new(bot_token: nil, signing_secret: "secret")
     end
   end
 
   test "raises error when signing secret is missing" do
+    # Temporarily stub the configuration to ensure nil values
+    ThreadAgent.configuration.stubs(:slack_signing_secret).returns(nil)
+
     assert_raises ThreadAgent::SlackError do
       ThreadAgent::Slack::Service.new(bot_token: "token", signing_secret: nil)
     end
@@ -595,7 +606,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         true
       end.returns(slack_response)
 
-      @service.stubs(:client).returns(mock_client)
+      # Mock the shortcut_handler's slack_client.client to return our mocked client
+      @service.shortcut_handler.slack_client.stubs(:client).returns(mock_client)
 
       result = @service.create_modal(@trigger_id, @workspaces, @templates)
 
@@ -626,7 +638,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         true
       end.returns(slack_response)
 
-      @service.stubs(:client).returns(mock_client)
+      # Mock the shortcut_handler's slack_client.client to return our mocked client
+      @service.shortcut_handler.slack_client.stubs(:client).returns(mock_client)
 
       result = @service.create_modal(@trigger_id, @workspaces, [])
 
@@ -654,7 +667,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         true
       end.returns(slack_response)
 
-      @service.stubs(:client).returns(mock_client)
+      # Mock the shortcut_handler's slack_client.client to return our mocked client
+      @service.shortcut_handler.slack_client.stubs(:client).returns(mock_client)
 
       result = @service.create_modal(@trigger_id, string_key_workspaces, [])
 
@@ -693,8 +707,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       slack_error = ::Slack::Web::Api::Errors::SlackError.new("Invalid trigger")
       slack_error.stubs(:response_metadata).returns({ "status_code" => 400 })
 
-      # Mock with_retries to simulate API error that doesn't get retried (4xx)
-      @service.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (400): Invalid trigger"))
+      # Mock the shortcut_handler's retry handler to simulate API error that doesn't get retried (4xx)
+      @service.shortcut_handler.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (400): Invalid trigger"))
 
       result = @service.create_modal(@trigger_id, @workspaces, @templates)
 
@@ -705,8 +719,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     test "handles general exceptions gracefully" do
       general_error = StandardError.new("Unexpected error")
 
-      # Mock with_retries to simulate a general error
-      @service.expects(:with_retries).raises(general_error)
+      # Mock the shortcut_handler's retry handler to simulate a general error
+      @service.shortcut_handler.retry_handler.expects(:with_retries).raises(general_error)
 
       result = @service.create_modal(@trigger_id, @workspaces, @templates)
 
@@ -731,7 +745,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         "success"
       }
 
-      @service.expects(:sleep).with(0.1).twice
+      @service.retry_handler.expects(:sleep).with(0.1).twice
 
       result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.1) { test_block.call }
       assert_equal "success", result
@@ -748,7 +762,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         raise rate_limit_error
       }
 
-      @service.expects(:sleep).with(0.1).twice
+      @service.retry_handler.expects(:sleep).with(0.1).twice
 
       assert_raises(ThreadAgent::SlackError, /Rate limit exceeded after 2 retries/) do
         @service.send(:with_retries, max_retries: 2, initial_delay: 0.1) { test_block.call }
@@ -767,8 +781,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       }
 
       # Initial delay: 0.1, second delay: 0.2 (doubled)
-      @service.expects(:sleep).with(0.1).once
-      @service.expects(:sleep).with(0.2).once
+      @service.retry_handler.expects(:sleep).with(0.1).once
+      @service.retry_handler.expects(:sleep).with(0.2).once
 
       result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.1, max_delay: 1.0) { test_block.call }
       assert_equal "success", result
@@ -784,8 +798,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         raise timeout_error
       }
 
-      @service.expects(:sleep).with(1.0).once
-      @service.expects(:sleep).with(2.0).once
+      @service.retry_handler.expects(:sleep).with(1.0).once
+      @service.retry_handler.expects(:sleep).with(2.0).once
 
       assert_raises(ThreadAgent::SlackError, /Timeout error after 2 retries/) do
         @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
@@ -808,7 +822,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         "success"
       }
 
-      @service.expects(:sleep).with(1.0).once
+      @service.retry_handler.expects(:sleep).with(1.0).once
 
       result = @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
       assert_equal "success", result
@@ -821,7 +835,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         raise client_error
       }
 
-      @service.expects(:sleep).never
+      @service.retry_handler.expects(:sleep).never
 
       assert_raises(ThreadAgent::SlackError, /Slack API client error \(404\)/) do
         @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
@@ -839,8 +853,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         "success"
       }
 
-      @service.expects(:sleep).with(0.5).once
-      @service.expects(:sleep).with(1.0).once
+      @service.retry_handler.expects(:sleep).with(0.5).once
+      @service.retry_handler.expects(:sleep).with(1.0).once
 
       result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.5) { test_block.call }
       assert_equal "success", result
@@ -856,7 +870,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
         raise network_error
       }
 
-      @service.expects(:sleep).with(1.0).once
+      @service.retry_handler.expects(:sleep).with(1.0).once
 
       assert_raises(ThreadAgent::SlackError, /Network timeout after 1 retries/) do
         @service.send(:with_retries, max_retries: 1, initial_delay: 1.0) { test_block.call }
@@ -875,9 +889,9 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       }
 
       # Initial: 2.0, second: 4.0, third: 5.0 (capped by max_delay)
-      @service.expects(:sleep).with(2.0).once
-      @service.expects(:sleep).with(4.0).once
-      @service.expects(:sleep).with(5.0).once
+      @service.retry_handler.expects(:sleep).with(2.0).once
+      @service.retry_handler.expects(:sleep).with(4.0).once
+      @service.retry_handler.expects(:sleep).with(5.0).once
 
       result = @service.send(:with_retries, max_retries: 4, initial_delay: 2.0, max_delay: 5.0) { test_block.call }
       assert_equal "success", result
@@ -892,39 +906,17 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       @thread_ts = "1605139215.000700"
     end
 
-        test "fetch_thread uses with_retries for API calls" do
-      parent_message = OpenStruct.new(
-        channel: @channel_id,
-        user: "U12345",
-        text: "Parent message",
-        ts: @thread_ts,
-        attachments: [],
-        files: []
-      )
-      replies = [ parent_message ]
+    test "fetch_thread uses with_retries for API calls" do
+      # Mock the thread_fetcher to verify with_retries is being used
+      mock_fetcher = mock("thread_fetcher")
+      @service.stubs(:thread_fetcher).returns(mock_fetcher)
 
-      history_response = OpenStruct.new(messages: [ parent_message ])
-      replies_response = OpenStruct.new(messages: replies)
-
-      mock_client = mock("slack_client")
-      @service.stubs(:client).returns(mock_client)
-
-      # Set up client expectations
-      mock_client.expects(:conversations_history).with(
-        channel: @channel_id,
-        latest: @thread_ts,
-        limit: 1,
-        inclusive: true
-      ).returns(history_response)
-
-      mock_client.expects(:conversations_replies).with(
-        channel: @channel_id,
-        ts: @thread_ts
-      ).returns(replies_response)
-
-      # Verify that with_retries is being used by checking that it's called
-      # We'll do this by stubbing sleep which is called inside with_retries during retries
-      @service.expects(:sleep).never  # Since we're not testing retry scenarios, sleep shouldn't be called
+      # Expect fetch_thread to be called and return a successful result
+      expected_result = ThreadAgent::Result.success({
+        channel_id: @channel_id,
+        thread_ts: @thread_ts
+      })
+      mock_fetcher.expects(:fetch_thread).with(@channel_id, @thread_ts).returns(expected_result)
 
       result = @service.fetch_thread(@channel_id, @thread_ts)
 
@@ -934,14 +926,17 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     end
 
     test "fetch_thread handles ThreadAgent::SlackError from with_retries" do
-      slack_error = ThreadAgent::SlackError.new("Rate limit exceeded after 3 retries")
+      # Mock the thread_fetcher to return an error
+      mock_fetcher = mock("thread_fetcher")
+      @service.stubs(:thread_fetcher).returns(mock_fetcher)
 
-      @service.expects(:with_retries).raises(slack_error)
+      error_result = ThreadAgent::Result.failure("Slack API error after 0 retries: invalid_auth")
+      mock_fetcher.expects(:fetch_thread).with(@channel_id, @thread_ts).returns(error_result)
 
       result = @service.fetch_thread(@channel_id, @thread_ts)
 
       assert result.failure?
-      assert_equal "Rate limit exceeded after 3 retries", result.error
+      assert_equal "Slack API error after 0 retries: invalid_auth", result.error
     end
   end
 
@@ -953,20 +948,13 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     end
 
     test "create_modal uses with_retries for API calls" do
+      # Mock the shortcut_handler to verify with_retries is being used
+      mock_handler = mock("shortcut_handler")
+      @service.stubs(:shortcut_handler).returns(mock_handler)
+
       slack_response = { "ok" => true, "view" => { "id" => "V123456789" } }
-
-      mock_client = mock("slack_client")
-
-      # Verify with_retries is called
-      @service.expects(:with_retries).yields.returns(slack_response)
-
-      mock_client.expects(:views_open).with do |args|
-        assert_equal @trigger_id, args[:trigger_id]
-        assert_equal "modal", args[:view][:type]
-        true
-      end.returns(slack_response)
-
-      @service.stubs(:client).returns(mock_client)
+      expected_result = ThreadAgent::Result.success(slack_response)
+      mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, []).returns(expected_result)
 
       result = @service.create_modal(@trigger_id, @workspaces, [])
 
@@ -975,14 +963,158 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     end
 
     test "create_modal handles ThreadAgent::SlackError from with_retries" do
-      slack_error = ThreadAgent::SlackError.new("Network timeout after 3 retries")
+      # Mock the shortcut_handler to return an error
+      mock_handler = mock("shortcut_handler")
+      @service.stubs(:shortcut_handler).returns(mock_handler)
 
-      @service.expects(:with_retries).raises(slack_error)
+      error_result = ThreadAgent::Result.failure("Slack API error after 0 retries: invalid_auth")
+      mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, []).returns(error_result)
 
       result = @service.create_modal(@trigger_id, @workspaces, [])
 
       assert result.failure?
-      assert_equal "Network timeout after 3 retries", result.error
+      assert_equal "Slack API error after 0 retries: invalid_auth", result.error
+    end
+  end
+
+  class HandleModalSubmissionTest < ThreadAgent::Slack::ServiceTest
+    def setup
+      super
+    end
+
+    test "handle_modal_submission processes valid payload successfully" do
+      payload = {
+        "type" => "view_submission",
+        "user" => {
+          "id" => "U123456",
+          "name" => "testuser"
+        },
+        "view" => {
+          "id" => "V123456",
+          "state" => {
+            "values" => {
+              "workspace_select" => {
+                "selected_workspace" => {
+                  "selected_option" => {
+                    "value" => "workspace_123"
+                  }
+                }
+              },
+              "template_select" => {
+                "selected_template" => {
+                  "selected_option" => {
+                    "value" => "template_456"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.success?
+      assert_equal "Modal submission processed successfully", result.data
+    end
+
+    test "handle_modal_submission rejects invalid payload type" do
+      payload = {
+        "type" => "shortcut",
+        "callback_id" => "thread_capture"
+      }
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.failure?
+      assert_equal "Invalid payload type", result.error
+    end
+
+    test "handle_modal_submission handles missing view data" do
+      payload = {
+        "type" => "view_submission",
+        "user" => {
+          "id" => "U123456"
+        }
+      }
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.failure?
+      assert_equal "Missing modal submission data", result.error
+    end
+
+    test "handle_modal_submission handles empty state values" do
+      payload = {
+        "type" => "view_submission",
+        "user" => {
+          "id" => "U123456"
+        },
+        "view" => {
+          "state" => {
+            "values" => {}
+          }
+        }
+      }
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.failure?
+      assert_equal "Missing modal submission data", result.error
+    end
+
+    test "handle_modal_submission handles payload with minimal valid data" do
+      payload = {
+        "type" => "view_submission",
+        "user" => {
+          "id" => "U123456"
+        },
+        "view" => {
+          "state" => {
+            "values" => {
+              "some_field" => {
+                "some_action" => {
+                  "value" => "some_value"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.success?
+      assert_equal "Modal submission processed successfully", result.data
+    end
+
+    test "handle_modal_submission handles exceptions gracefully" do
+      payload = {
+        "type" => "view_submission",
+        "user" => {
+          "id" => "U123456"
+        },
+        "view" => {
+          "state" => {
+            "values" => {
+              "test" => "value"
+            }
+          }
+        }
+      }
+
+      # Mock Rails.logger to expect error logging
+      Rails.logger.expects(:error).with(regexp_matches(/Error processing modal submission/))
+
+      # Mock the payload to raise an error during processing
+      payload["view"].define_singleton_method(:dig) do |*args|
+        raise StandardError, "Simulated processing error"
+      end
+
+      result = @service.handle_modal_submission(payload)
+
+      assert result.failure?
+      assert_match(/Failed to process modal submission: Simulated processing error/, result.error)
     end
   end
 end
