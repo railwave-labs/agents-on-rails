@@ -1,0 +1,47 @@
+{
+  "dashboard": {
+    "title": "ThreadAgent Webhooks",
+    "tags": [
+      "threadagent",
+      "webhooks"
+    ],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Webhook Requests",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(thread_agent_webhook_requests_total[5m])",
+            "legendFormat": "Requests/sec"
+          }
+        ]
+      },
+      {
+        "title": "Webhook Response Times",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, thread_agent_webhook_duration_seconds)",
+            "legendFormat": "95th percentile"
+          }
+        ]
+      },
+      {
+        "title": "Job Queue",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "thread_agent_jobs_enqueued_total",
+            "legendFormat": "Jobs Enqueued"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

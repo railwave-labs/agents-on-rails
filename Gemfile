@@ -18,6 +18,10 @@ gem "stimulus-rails"
 gem "tailwindcss-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
+# Ruby client for Slack Web and RTM APIs [https://github.com/slack-ruby/slack-ruby-client]
+gem "slack-ruby-client"
+# OpenAI API client [https://github.com/alexrudall/ruby-openai]
+gem "ruby-openai", "~> 7.0"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
@@ -35,6 +39,9 @@ gem "bootsnap", require: false
 
 # Add HTTP asset caching/compression and X-Sendfile acceleration to Puma [https://github.com/basecamp/thruster/]
 gem "thruster", require: false
+
+# Load environment variables from .env files [https://github.com/bkeepers/dotenv]
+gem "dotenv-rails", groups: [ :development, :test ]
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 # gem "image_processing", "~> 1.2"
@@ -59,4 +66,13 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
+
+  # Fixtures replacement with a straightforward definition syntax
+  gem "factory_bot_rails"
+
+  # Mocking library for cleaner test doubles
+  gem "mocha"
+
+  # Mock HTTP requests for testing
+  gem "webmock", ">= 3.19"
 end
