@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_20_141452) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_22_123947) do
   create_table "thread_agent_notion_databases", force: :cascade do |t|
     t.integer "notion_workspace_id", null: false
     t.string "notion_database_id", limit: 255, null: false
@@ -62,12 +62,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_20_141452) do
     t.datetime "updated_at", null: false
     t.string "slack_message_id"
     t.string "slack_channel_id"
+    t.integer "template_id"
+    t.string "slack_thread_ts", limit: 255
     t.index ["slack_channel_id", "slack_message_id"], name: "idx_on_slack_channel_id_slack_message_id_e2571b1df9"
+    t.index ["slack_channel_id", "slack_thread_ts"], name: "idx_on_slack_channel_id_slack_thread_ts_c401ce4f43"
     t.index ["started_at"], name: "index_thread_agent_workflow_runs_on_started_at"
     t.index ["status"], name: "index_thread_agent_workflow_runs_on_status"
+    t.index ["template_id"], name: "index_thread_agent_workflow_runs_on_template_id"
     t.index ["workflow_name", "status"], name: "index_thread_agent_workflow_runs_on_workflow_name_and_status"
   end
 
   add_foreign_key "thread_agent_notion_databases", "thread_agent_notion_workspaces", column: "notion_workspace_id"
   add_foreign_key "thread_agent_templates", "thread_agent_notion_databases", column: "notion_database_id"
+  add_foreign_key "thread_agent_workflow_runs", "thread_agent_templates", column: "template_id"
 end
