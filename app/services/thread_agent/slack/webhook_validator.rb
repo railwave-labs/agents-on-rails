@@ -86,6 +86,8 @@ module ThreadAgent
           payload["actions"].present? && payload["actions"].is_a?(Array)
         when "view_submission"
           payload["view"].present? && payload["view"]["id"].present?
+        when "shortcut"
+          payload["callback_id"].present? && payload["trigger_id"].present?
         else
           # Unknown payload type is considered invalid
           false
