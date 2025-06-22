@@ -4,29 +4,16 @@ module ThreadAgent
   class ProcessWorkflowJob < ApplicationJob
     queue_as :default
 
+    retry_on ::Slack::Web::Api::Errors::SlackError, wait: 30.seconds, attempts: 5
+
     def perform(payload)
-      Rails.logger.info("ProcessWorkflowJob running. Payload: #{payload.inspect}")
+      Rails.logger.info("ProcessWorkflowJob received: #{payload.inspect}")
 
-      # Extract workflow details from the modal submission
-      user_id = payload.dig("user", "id")
-      view = payload["view"]
-      state_values = view&.dig("state", "values") || {}
+      ActiveSupport::Notifications.instrument("thread_agent.workflow.process", payload) do
+        # TODO: Implement actual workflow processing (Slack thread → Notion page transformation)
+      end
 
-      Rails.logger.info("Processing workflow for user: #{user_id}")
-      Rails.logger.info("Modal state values: #{state_values.inspect}")
-
-      # TODO: implement workflow processing logic in later iteration
-      # This will include:
-      # - Extracting workspace and template selections
-      # - Fetching thread data from Slack
-      # - Processing the thread through the selected workflow
-      # - Creating Notion pages/databases as needed
-
-      Rails.logger.info("ProcessWorkflowJob completed successfully")
-    rescue StandardError => e
-      Rails.logger.error("ProcessWorkflowJob failed: #{e.message}")
-      Rails.logger.error("Backtrace: #{e.backtrace.join("\n")}")
-      raise e
+      true
     end
   end
 end

@@ -40,116 +40,49 @@ class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
     end
   end
 
-  test "perform processes payload successfully and logs workflow details" do
+  test "perform logs payload and returns true" do
     job = ThreadAgent::ProcessWorkflowJob.new
 
-    Rails.logger.expects(:info).with(regexp_matches(/ProcessWorkflowJob running. Payload:/)).once
-    Rails.logger.expects(:info).with("Processing workflow for user: U123456").once
-    Rails.logger.expects(:info).with(regexp_matches(/Modal state values:/)).once
-    Rails.logger.expects(:info).with("ProcessWorkflowJob completed successfully").once
+    Rails.logger.expects(:info).with("ProcessWorkflowJob received: #{@valid_payload.inspect}").once
+
+    result = job.perform(@valid_payload)
+    assert_equal true, result
+  end
+
+  test "perform instruments workflow process event" do
+    job = ThreadAgent::ProcessWorkflowJob.new
+
+    instrumented_payload = nil
+    instrumented_event = nil
+
+    ActiveSupport::Notifications.subscribe("thread_agent.workflow.process") do |name, start, finish, id, payload|
+      instrumented_event = name
+      instrumented_payload = payload
+    end
 
     job.perform(@valid_payload)
+
+    assert_equal "thread_agent.workflow.process", instrumented_event
+    assert_equal @valid_payload, instrumented_payload
+  ensure
+    ActiveSupport::Notifications.unsubscribe("thread_agent.workflow.process")
   end
 
-  test "perform extracts user and view data correctly" do
+  test "perform handles empty payload" do
     job = ThreadAgent::ProcessWorkflowJob.new
 
-    # Capture the logged data by stubbing the logger
-    logged_messages = []
-    Rails.logger.stubs(:info) do |message|
-      logged_messages << message
-    end
+    Rails.logger.expects(:info).with("ProcessWorkflowJob received: {}")
 
-    job.perform(@valid_payload)
-
-    # Verify user extraction
-    assert_includes logged_messages.join(" "), "U123456"
-
-    # Verify state values extraction
-    state_log = logged_messages.find { |msg| msg.include?("Modal state values:") }
-    assert_not_nil state_log
-    assert_includes state_log, "workspace_select"
-    assert_includes state_log, "template_select"
+    result = job.perform({})
+    assert_equal true, result
   end
 
-  test "perform handles payload with minimal data" do
-    minimal_payload = {
-      "type" => "view_submission",
-      "user" => {
-        "id" => "U999999"
-      },
-      "view" => {
-        "state" => {
-          "values" => {}
-        }
-      }
-    }
-
+  test "perform handles nil payload" do
     job = ThreadAgent::ProcessWorkflowJob.new
 
-    Rails.logger.expects(:info).at_least_once
+    Rails.logger.expects(:info).with("ProcessWorkflowJob received: nil")
 
-    # Should complete without error even with minimal data
-    assert_nothing_raised do
-      job.perform(minimal_payload)
-    end
-  end
-
-  test "perform handles exceptions and logs errors properly" do
-    job = ThreadAgent::ProcessWorkflowJob.new
-
-    # Create a payload that will cause an error when accessing dig
-    faulty_payload = @valid_payload.dup
-    faulty_payload.define_singleton_method(:dig) do |*args|
-      raise StandardError, "Simulated error" if args == [ "user", "id" ]
-      super(*args)
-    end
-
-    Rails.logger.expects(:error).with("ProcessWorkflowJob failed: Simulated error").once
-    Rails.logger.expects(:error).with(regexp_matches(/Backtrace:/)).once
-
-    assert_raises(StandardError, "Simulated error") do
-      job.perform(faulty_payload)
-    end
-  end
-
-  test "perform handles payload without user id" do
-    payload_without_user = {
-      "type" => "view_submission",
-      "view" => {
-        "state" => {
-          "values" => {
-            "test" => "value"
-          }
-        }
-      }
-    }
-
-    job = ThreadAgent::ProcessWorkflowJob.new
-
-    Rails.logger.expects(:info).at_least_once
-
-    # Should handle nil user_id gracefully
-    assert_nothing_raised do
-      job.perform(payload_without_user)
-    end
-  end
-
-  test "perform handles payload without view data" do
-    payload_without_view = {
-      "type" => "view_submission",
-      "user" => {
-        "id" => "U123456"
-      }
-    }
-
-    job = ThreadAgent::ProcessWorkflowJob.new
-
-    Rails.logger.expects(:info).at_least_once
-
-    # Should handle missing view data gracefully
-    assert_nothing_raised do
-      job.perform(payload_without_view)
-    end
+    result = job.perform(nil)
+    assert_equal true, result
   end
 end
