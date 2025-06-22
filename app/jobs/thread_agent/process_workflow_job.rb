@@ -19,7 +19,13 @@ module ThreadAgent
     private
 
     def process_workflow(payload)
+      # Basic safety checks - return nil for unsupported cases
+      return nil if payload.nil? || !payload.is_a?(Hash)
+
+      # Only proceed if we have a workflow_run_id (the "new" workflow format)
       workflow_run_id = payload[:workflow_run_id]
+      return nil unless workflow_run_id.present?
+
       thread_data = payload[:thread_data]
 
       # Load the workflow run with its template
