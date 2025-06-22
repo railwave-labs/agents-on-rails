@@ -70,4 +70,7 @@ group :test do
 
   # Mocking library for cleaner test doubles
   gem "mocha"
+
+  # Mock HTTP requests for testing
+  gem "webmock", ">= 3.19"
 end
