@@ -13,7 +13,7 @@ module ThreadAgent
           open_timeout: open_timeout,
           max_retries: max_retries
         )
-        @retry_handler = RetryHandler.new(max_retries: max_retries)
+        @retry_handler = RetryHandler.new(max_attempts: max_retries)
         @thread_fetcher = ThreadFetcher.new(@slack_client, @retry_handler)
         @shortcut_handler = ShortcutHandler.new(@slack_client, @retry_handler)
       end
@@ -50,13 +50,8 @@ module ThreadAgent
       end
 
       # Delegate retry logic to retry_handler
-      def with_retries(max_retries: nil, initial_delay: nil, max_delay: nil, &block)
-        retry_handler.with_retries(
-          max_retries: max_retries,
-          initial_delay: initial_delay,
-          max_delay: max_delay,
-          &block
-        )
+      def retry_with(&block)
+        retry_handler.retry_with(&block)
       end
 
       # Validate a Slack webhook payload

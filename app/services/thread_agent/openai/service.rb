@@ -5,15 +5,16 @@ module ThreadAgent
     class Service
       DEFAULT_TIMEOUT = 20
 
-      attr_reader :openai_client, :message_builder
+      attr_reader :openai_client, :message_builder, :retry_handler
 
-      def initialize(api_key: nil, model: nil, timeout: DEFAULT_TIMEOUT)
+      def initialize(api_key: nil, model: nil, timeout: DEFAULT_TIMEOUT, max_retries: 3)
         @openai_client = Client.new(
           api_key: api_key,
           model: model,
           timeout: timeout
         )
         @message_builder = MessageBuilder
+        @retry_handler = RetryHandler.new(max_attempts: max_retries)
       end
 
       # Delegate configuration attributes to openai_client
@@ -69,17 +70,17 @@ module ThreadAgent
         end
       end
 
-
-
       def make_openai_request(messages)
-        client.chat(
-          parameters: {
-            model: model,
-            messages: messages,
-            max_tokens: 1000,
-            temperature: 0.7
-          }
-        )
+        retry_handler.retry_with do
+          client.chat(
+            parameters: {
+              model: model,
+              messages: messages,
+              max_tokens: 1000,
+              temperature: 0.7
+            }
+          )
+        end
       rescue StandardError => e
         raise ThreadAgent::OpenaiError, "OpenAI API request failed: #{e.message}"
       end

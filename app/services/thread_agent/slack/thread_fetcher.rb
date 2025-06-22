@@ -19,7 +19,7 @@ module ThreadAgent
           validate_thread_params!(channel_id, thread_ts)
 
           # Get the parent message first
-          parent_message = retry_handler.with_retries do
+          parent_message = retry_handler.retry_with do
             slack_client.client.conversations_history(
               channel: channel_id,
               latest: thread_ts,
@@ -31,7 +31,7 @@ module ThreadAgent
           return ThreadAgent::Result.failure("Parent message not found") unless parent_message
 
           # Get replies in the thread
-          replies = retry_handler.with_retries do
+          replies = retry_handler.retry_with do
             slack_client.client.conversations_replies(
               channel: channel_id,
               ts: thread_ts

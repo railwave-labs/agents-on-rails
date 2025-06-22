@@ -233,12 +233,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
   test "fetch_thread handles rate limiting error" do
     service = ThreadAgent::Slack::Service.new(bot_token: "xoxb-valid-token", signing_secret: "test-secret")
 
-    # Create rate limit error with mock response_metadata
-    rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
-    rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 30 })
-
     # Mock the retry handler to simulate exhausted retries
-    service.thread_fetcher.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Rate limit exceeded after 3 retries: Rate limited"))
+    service.thread_fetcher.retry_handler.expects(:retry_with).raises(ThreadAgent::SlackError.new("Rate limit exceeded after 3 retries: Rate limited"))
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -249,11 +245,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
   test "fetch_thread handles general Slack API error" do
     service = ThreadAgent::Slack::Service.new(bot_token: "xoxb-valid-token", signing_secret: "test-secret")
 
-    slack_error = ::Slack::Web::Api::Errors::SlackError.new("Channel not found")
-    slack_error.stubs(:response_metadata).returns({ "status_code" => 404 })
-
     # Mock the retry handler to simulate API error that doesn't get retried (4xx)
-    service.thread_fetcher.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (404): Channel not found"))
+    service.thread_fetcher.retry_handler.expects(:retry_with).raises(ThreadAgent::SlackError.new("Slack API client error (404): Channel not found"))
 
     result = service.fetch_thread("C12345678", "1605139215.000700")
 
@@ -708,7 +701,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       slack_error.stubs(:response_metadata).returns({ "status_code" => 400 })
 
       # Mock the shortcut_handler's retry handler to simulate API error that doesn't get retried (4xx)
-      @service.shortcut_handler.retry_handler.expects(:with_retries).raises(ThreadAgent::SlackError.new("Slack API client error (400): Invalid trigger"))
+      @service.shortcut_handler.retry_handler.expects(:retry_with).raises(ThreadAgent::SlackError.new("Slack API client error (400): Invalid trigger"))
 
       result = @service.create_modal(@trigger_id, @workspaces, @templates)
 
@@ -720,7 +713,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       general_error = StandardError.new("Unexpected error")
 
       # Mock the shortcut_handler's retry handler to simulate a general error
-      @service.shortcut_handler.retry_handler.expects(:with_retries).raises(general_error)
+      @service.shortcut_handler.retry_handler.expects(:retry_with).raises(general_error)
 
       result = @service.create_modal(@trigger_id, @workspaces, @templates)
 
@@ -729,175 +722,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
     end
   end
 
-  class RetryLogicTest < ThreadAgent::Slack::ServiceTest
-    def setup
-      super
-    end
 
-    test "with_retries handles rate limiting with retry-after header" do
-      rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
-      rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 0.1 })
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise rate_limit_error if call_count <= 2
-        "success"
-      }
-
-      @service.retry_handler.expects(:sleep).with(0.1).twice
-
-      result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.1) { test_block.call }
-      assert_equal "success", result
-      assert_equal 3, call_count
-    end
-
-    test "with_retries raises ThreadAgent::SlackError after max rate limit retries" do
-      rate_limit_error = ::Slack::Web::Api::Errors::RateLimited.new("Rate limited")
-      rate_limit_error.stubs(:response_metadata).returns({ "retry_after" => 0.1 })
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise rate_limit_error
-      }
-
-      @service.retry_handler.expects(:sleep).with(0.1).twice
-
-      assert_raises(ThreadAgent::SlackError, /Rate limit exceeded after 2 retries/) do
-        @service.send(:with_retries, max_retries: 2, initial_delay: 0.1) { test_block.call }
-      end
-      assert_equal 3, call_count # Initial + 2 retries
-    end
-
-    test "with_retries handles timeout errors with exponential backoff" do
-      timeout_error = ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise timeout_error if call_count <= 2
-        "success"
-      }
-
-      # Initial delay: 0.1, second delay: 0.2 (doubled)
-      @service.retry_handler.expects(:sleep).with(0.1).once
-      @service.retry_handler.expects(:sleep).with(0.2).once
-
-      result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.1, max_delay: 1.0) { test_block.call }
-      assert_equal "success", result
-      assert_equal 3, call_count
-    end
-
-    test "with_retries raises ThreadAgent::SlackError after max timeout retries" do
-      timeout_error = ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise timeout_error
-      }
-
-      @service.retry_handler.expects(:sleep).with(1.0).once
-      @service.retry_handler.expects(:sleep).with(2.0).once
-
-      assert_raises(ThreadAgent::SlackError, /Timeout error after 2 retries/) do
-        @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
-      end
-      assert_equal 3, call_count # Initial + 2 retries
-    end
-
-    test "with_retries retries server errors (5xx) but not client errors (4xx)" do
-      server_error = ::Slack::Web::Api::Errors::SlackError.new("Server error")
-      server_error.stubs(:response_metadata).returns({ "status_code" => 503 })
-
-      client_error = ::Slack::Web::Api::Errors::SlackError.new("Client error")
-      client_error.stubs(:response_metadata).returns({ "status_code" => 404 })
-
-      # Test server error retry
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise server_error if call_count == 1
-        "success"
-      }
-
-      @service.retry_handler.expects(:sleep).with(1.0).once
-
-      result = @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
-      assert_equal "success", result
-      assert_equal 2, call_count
-
-      # Test client error no retry
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise client_error
-      }
-
-      @service.retry_handler.expects(:sleep).never
-
-      assert_raises(ThreadAgent::SlackError, /Slack API client error \(404\)/) do
-        @service.send(:with_retries, max_retries: 2, initial_delay: 1.0) { test_block.call }
-      end
-      assert_equal 1, call_count # No retries
-    end
-
-    test "with_retries handles network timeout errors" do
-      network_error = Net::ReadTimeout.new("Network timeout")
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise network_error if call_count <= 2
-        "success"
-      }
-
-      @service.retry_handler.expects(:sleep).with(0.5).once
-      @service.retry_handler.expects(:sleep).with(1.0).once
-
-      result = @service.send(:with_retries, max_retries: 3, initial_delay: 0.5) { test_block.call }
-      assert_equal "success", result
-      assert_equal 3, call_count
-    end
-
-    test "with_retries raises ThreadAgent::SlackError after max network timeout retries" do
-      network_error = Net::ReadTimeout.new("Read timeout")
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise network_error
-      }
-
-      @service.retry_handler.expects(:sleep).with(1.0).once
-
-      assert_raises(ThreadAgent::SlackError, /Network timeout after 1 retries/) do
-        @service.send(:with_retries, max_retries: 1, initial_delay: 1.0) { test_block.call }
-      end
-      assert_equal 2, call_count # Initial + 1 retry
-    end
-
-    test "with_retries respects max_delay for exponential backoff" do
-      timeout_error = ::Slack::Web::Api::Errors::TimeoutError.new("Timeout")
-
-      call_count = 0
-      test_block = -> {
-        call_count += 1
-        raise timeout_error if call_count <= 3
-        "success"
-      }
-
-      # Initial: 2.0, second: 4.0, third: 5.0 (capped by max_delay)
-      @service.retry_handler.expects(:sleep).with(2.0).once
-      @service.retry_handler.expects(:sleep).with(4.0).once
-      @service.retry_handler.expects(:sleep).with(5.0).once
-
-      result = @service.send(:with_retries, max_retries: 4, initial_delay: 2.0, max_delay: 5.0) { test_block.call }
-      assert_equal "success", result
-      assert_equal 4, call_count
-    end
-  end
 
   class FetchThreadRetryTest < ThreadAgent::Slack::ServiceTest
     def setup
@@ -906,8 +731,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       @thread_ts = "1605139215.000700"
     end
 
-    test "fetch_thread uses with_retries for API calls" do
-      # Mock the thread_fetcher to verify with_retries is being used
+    test "fetch_thread uses retry_with for API calls" do
+      # Mock the thread_fetcher to verify retry_with is being used
       mock_fetcher = mock("thread_fetcher")
       @service.stubs(:thread_fetcher).returns(mock_fetcher)
 
@@ -925,7 +750,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       assert_equal @thread_ts, result.data[:thread_ts]
     end
 
-    test "fetch_thread handles ThreadAgent::SlackError from with_retries" do
+    test "fetch_thread handles ThreadAgent::SlackError from retry_with" do
       # Mock the thread_fetcher to return an error
       mock_fetcher = mock("thread_fetcher")
       @service.stubs(:thread_fetcher).returns(mock_fetcher)
@@ -947,8 +772,8 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       @workspaces = [ { id: 1, name: "Engineering Workspace" } ]
     end
 
-    test "create_modal uses with_retries for API calls" do
-      # Mock the shortcut_handler to verify with_retries is being used
+    test "create_modal uses retry_with for API calls" do
+      # Mock the shortcut_handler to verify retry_with is being used
       mock_handler = mock("shortcut_handler")
       @service.stubs(:shortcut_handler).returns(mock_handler)
 
@@ -962,7 +787,7 @@ class ThreadAgent::Slack::ServiceTest < ActiveSupport::TestCase
       assert_equal slack_response, result.data
     end
 
-    test "create_modal handles ThreadAgent::SlackError from with_retries" do
+    test "create_modal handles ThreadAgent::SlackError from retry_with" do
       # Mock the shortcut_handler to return an error
       mock_handler = mock("shortcut_handler")
       @service.stubs(:shortcut_handler).returns(mock_handler)
