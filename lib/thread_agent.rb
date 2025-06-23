@@ -60,7 +60,12 @@ module ThreadAgent
     end
 
     def notion_configured?
-      !notion_token.nil? && !notion_token.empty?
+      # Check for either OAuth flow (client_id + client_secret) or direct token
+      oauth_configured = !notion_client_id.nil? && !notion_client_id.empty? &&
+                         !notion_client_secret.nil? && !notion_client_secret.empty?
+      token_configured = !notion_token.nil? && !notion_token.empty?
+
+      oauth_configured || token_configured
     end
 
     def fully_configured?
