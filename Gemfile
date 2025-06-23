@@ -22,6 +22,8 @@ gem "jbuilder"
 gem "slack-ruby-client"
 # OpenAI API client [https://github.com/alexrudall/ruby-openai]
 gem "ruby-openai", "~> 7.0"
+# Notion API client [https://github.com/orbit-love/notion-ruby-client]
+gem "notion-ruby-client", "~> 1.2"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
