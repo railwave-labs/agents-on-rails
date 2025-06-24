@@ -5,9 +5,9 @@ module ThreadAgent
     class Client
       attr_reader :token, :timeout
 
-      def initialize(token: nil, timeout: 20)
+      def initialize(token: nil, timeout: nil)
         @token = token || ThreadAgent.configuration.notion_token
-        @timeout = timeout
+        @timeout = timeout || ThreadAgent.configuration.default_timeout
 
         validate_configuration!
       end

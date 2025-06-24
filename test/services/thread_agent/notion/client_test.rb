@@ -31,7 +31,7 @@ class ThreadAgent::Notion::ClientTest < ActiveSupport::TestCase
     client = ThreadAgent::Notion::Client.new
 
     assert_equal "config-token", client.token
-    assert_equal 20, client.timeout # default timeout
+    assert_equal ThreadAgent.configuration.default_timeout, client.timeout # uses configuration default_timeout
   end
 
   test "parameter values override configuration values" do
