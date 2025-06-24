@@ -21,7 +21,7 @@ gem "jbuilder"
 # Ruby client for Slack Web and RTM APIs [https://github.com/slack-ruby/slack-ruby-client]
 gem "slack-ruby-client"
 # OpenAI API client [https://github.com/alexrudall/ruby-openai]
-gem "ruby-openai", "~> 7.0"
+gem "ruby-openai", "~> 8.1"
 # Notion API client [https://github.com/orbit-love/notion-ruby-client]
 gem "notion-ruby-client", "~> 1.2"
 
