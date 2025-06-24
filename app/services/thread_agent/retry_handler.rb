@@ -10,6 +10,7 @@ module ThreadAgent
 
     # Generic network and connection errors that any service might encounter
     GENERIC_RETRYABLE_ERRORS = [
+      Faraday::Error,              # HTTP client errors
       Net::ReadTimeout,            # Network read timeouts
       Net::OpenTimeout,            # Network connection timeouts
       Timeout::Error,              # General timeout errors

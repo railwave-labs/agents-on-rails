@@ -12,6 +12,7 @@ Rails.application.config.to_prepare do
 
     config.notion_client_id = ENV.fetch("THREAD_AGENT_NOTION_CLIENT_ID", nil)
     config.notion_client_secret = ENV.fetch("THREAD_AGENT_NOTION_CLIENT_SECRET", nil)
+    config.notion_token = ENV.fetch("THREAD_AGENT_NOTION_TOKEN", nil)
 
     config.default_timeout = ENV.fetch("THREAD_AGENT_DEFAULT_TIMEOUT", "30").to_i
     config.max_retries = ENV.fetch("THREAD_AGENT_MAX_RETRIES", "3").to_i
