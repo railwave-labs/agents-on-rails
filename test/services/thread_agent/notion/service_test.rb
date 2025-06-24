@@ -176,8 +176,7 @@ class ThreadAgent::Notion::ServiceTest < ActiveSupport::TestCase
     }
 
     @service.client.expects(:client).returns(mock_notion_client = mock("notion_client"))
-    mock_notion_client.expects(:database).returns(mock_database = mock("database"))
-    mock_database.expects(:retrieve).with(database_id: @database_id).returns(mock_api_response)
+    mock_notion_client.expects(:database).with(database_id: @database_id).returns(mock_api_response)
 
     result = @service.get_database(@database_id)
 
@@ -312,8 +311,10 @@ class ThreadAgent::Notion::ServiceTest < ActiveSupport::TestCase
     result = @service.send(:transform_database_from_api, api_response, "workspace_456")
 
     expected = {
+      id: "db_123",
       notion_database_id: "db_123",
       name: "Test Database",
+      title: "Test Database",
       properties: { "Name" => { type: "title", id: "title_id" } },
       json_data: api_response,
       workspace_id: "workspace_456"
