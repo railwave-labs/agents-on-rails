@@ -9,8 +9,10 @@ module ThreadAgent
       # @return [Hash] Transformed database data
       def self.transform_database_from_api(api_response, workspace_id = nil)
         {
+          id: api_response["id"],
           notion_database_id: api_response["id"],
           name: extract_title_from_notion_response(api_response["title"]),
+          title: extract_title_from_notion_response(api_response["title"]),
           properties: extract_properties_from_response(api_response["properties"]),
           json_data: api_response,
           workspace_id: workspace_id

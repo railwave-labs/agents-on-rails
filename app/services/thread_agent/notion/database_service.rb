@@ -54,7 +54,7 @@ module ThreadAgent
 
         begin
           response = retry_handler.retry_with do
-            notion_client.client.database.retrieve(database_id: database_id)
+            notion_client.client.database(database_id: database_id)
           end
 
           # Transform API payload into NotionDatabase compatible format

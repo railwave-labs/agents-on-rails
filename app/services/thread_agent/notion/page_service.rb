@@ -16,6 +16,8 @@ module ThreadAgent
       # @param content [Array<String, Hash>] Content blocks for the page body
       # @return [ThreadAgent::Result] Result object with created page data or error
       def create_page(database_id:, properties: {}, content: [])
+        return ThreadAgent::Result.failure("Missing database_id") if database_id.blank?
+
         begin
           payload = PayloadBuilder.build_page_payload(database_id, properties, content)
 
