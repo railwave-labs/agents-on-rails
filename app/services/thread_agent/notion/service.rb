@@ -51,17 +51,44 @@ module ThreadAgent
 
   # Create a page using thread data and AI content with intelligent building
   def create_page_from_workflow(thread_data:, workflow_run:, openai_data:)
-    return ThreadAgent::Result.failure("No Notion database configured for template") unless workflow_run.template&.notion_database
+    unless workflow_run.template&.notion_database
+      error = ThreadAgent::ConfigurationError.new(
+        "No Notion database configured for template",
+        context: {
+          component: "workflow_page_creation",
+          workflow_run_id: workflow_run.id,
+          template_present: !workflow_run.template.nil?,
+          template_id: workflow_run.template&.id
+        }
+      )
+      return ThreadAgent::ErrorHandler.to_result(error, service: "notion")
+    end
 
     database_id = workflow_run.template.notion_database.notion_database_id
 
-    # Build page data using the page builder
-    page_builder = PageBuilder.new(thread_data, workflow_run, openai_data)
-    properties = page_builder.build_properties
-    content = page_builder.build_content
+    begin
+      # Build page data using the page builder
+      page_builder = PageBuilder.new(thread_data, workflow_run, openai_data)
+      properties = page_builder.build_properties
+      content = page_builder.build_content
 
-    # Create page using the service
-    create_page(database_id: database_id, properties: properties, content: content)
+      # Create page using the service
+      create_page(database_id: database_id, properties: properties, content: content)
+    rescue ThreadAgent::Error => e
+      # Already a standardized error, just convert to result
+      ThreadAgent::ErrorHandler.to_result(e, service: "notion")
+    rescue StandardError => e
+      ThreadAgent::ErrorHandler.to_result(
+        e,
+        context: {
+          component: "workflow_page_creation",
+          workflow_run_id: workflow_run.id,
+          database_id: database_id,
+          template_id: workflow_run.template&.id
+        },
+        service: "notion"
+      )
+    end
   end
 
       private

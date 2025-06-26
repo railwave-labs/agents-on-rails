@@ -27,7 +27,15 @@ module ThreadAgent
           raw_body = payload.is_a?(Hash) ? payload.to_json : payload.to_s
 
           unless valid_signature?(timestamp, signature, raw_body)
-            return ThreadAgent::Result.failure("Invalid Slack signature")
+            error = ThreadAgent::SlackAuthError.new(
+              "Invalid Slack signature",
+              context: {
+                component: "webhook_validation",
+                timestamp: timestamp,
+                signature_present: signature.present?
+              }
+            )
+            return ThreadAgent::ErrorHandler.to_result(error, service: "slack")
           end
 
           # Parse the payload if it's a string
@@ -35,14 +43,30 @@ module ThreadAgent
 
           # Verify the payload structure
           unless valid_payload_structure?(parsed_payload)
-            return ThreadAgent::Result.failure("Invalid payload structure")
+            error = ThreadAgent::ValidationError.new(
+              "Invalid payload structure",
+              context: {
+                component: "webhook_validation",
+                payload_type: parsed_payload["type"],
+                payload_keys: parsed_payload.keys
+              }
+            )
+            return ThreadAgent::ErrorHandler.to_result(error, service: "slack")
           end
 
           ThreadAgent::Result.success(parsed_payload)
         rescue JSON::ParserError => e
-          ThreadAgent::Result.failure("Invalid JSON payload: #{e.message}")
+          ThreadAgent::ErrorHandler.to_result(
+            e,
+            context: { component: "webhook_validation", raw_body_length: raw_body&.length },
+            service: "slack"
+          )
         rescue StandardError => e
-          ThreadAgent::Result.failure("Unexpected error: #{e.message}")
+          ThreadAgent::ErrorHandler.to_result(
+            e,
+            context: { component: "webhook_validation" },
+            service: "slack"
+          )
         end
       end
 
@@ -50,7 +74,10 @@ module ThreadAgent
 
       def validate_signing_secret!
         unless signing_secret.present?
-          raise ThreadAgent::SlackError, "Missing Slack signing secret"
+          raise ThreadAgent::SlackAuthError.new(
+            "Missing Slack signing secret",
+            context: { component: "webhook_validator_initialization" }
+          )
         end
       end
 

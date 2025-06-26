@@ -36,16 +36,27 @@ module ThreadAgent
           client.default_max_retries = max_retries
         end
       rescue StandardError => e
-        raise ThreadAgent::SlackError, "Failed to initialize Slack client: #{e.message}"
+        error = ThreadAgent::ErrorHandler.standardize_error(
+          e,
+          context: { component: "slack_client_initialization" },
+          service: "slack"
+        )
+        raise error
       end
 
       def validate_configuration!
         unless bot_token.present?
-          raise ThreadAgent::SlackError, "Missing Slack bot token"
+          raise ThreadAgent::SlackAuthError.new(
+            "Missing Slack bot token",
+            context: { component: "slack_client_validation" }
+          )
         end
 
         unless signing_secret.present?
-          raise ThreadAgent::SlackError, "Missing Slack signing secret"
+          raise ThreadAgent::SlackAuthError.new(
+            "Missing Slack signing secret",
+            context: { component: "slack_client_validation" }
+          )
         end
       end
     end

@@ -20,11 +20,19 @@ module ThreadAgent
 
         # Handle orchestrator failures by re-raising exceptions for test compatibility
         if result.failure? && should_raise_exception_for_test?
-          log_with_context("WorkflowOrchestrator failed, re-raising exception for test",
-                           step: "error_handling",
-                           error: result.error,
-                           level: :error)
-          determine_and_raise_exception(result.error)
+          # Use ErrorHandler to standardize the error and then raise it
+          error = result.error.is_a?(ThreadAgent::Error) ? result.error :
+                  ThreadAgent::ErrorHandler.standardize_error(result.error, {
+                    operation: "workflow_execution",
+                    workflow_run_id: workflow_run_id
+                  })
+
+          ThreadAgent::ErrorHandler.log_error(error, {
+            step: "error_handling",
+            message: "WorkflowOrchestrator failed, re-raising exception for test"
+          })
+
+          raise error
         end
       end
 
@@ -33,18 +41,33 @@ module ThreadAgent
       # Return workflow_run for integration test compatibility
       workflow_run
     rescue ActiveRecord::RecordNotFound => e
-      log_with_context("WorkflowRun not found",
-                       step: "error_handling",
-                       error: e.message,
-                       level: :error)
-      raise
+      error = ThreadAgent::ErrorHandler.standardize_error(e, {
+        operation: "workflow_run_lookup",
+        workflow_run_id: workflow_run_id
+      })
+      ThreadAgent::ErrorHandler.log_error(error, {
+        step: "error_handling",
+        message: "WorkflowRun not found"
+      })
+      raise error
+    rescue ThreadAgent::Error => e
+      # Already standardized ThreadAgent errors - just log and re-raise
+      ThreadAgent::ErrorHandler.log_error(e, {
+        step: "error_handling",
+        message: "ThreadAgent error in ProcessWorkflowJob"
+      })
+      raise e
     rescue StandardError => e
-      log_with_context("Unexpected error in ProcessWorkflowJob",
-                       step: "error_handling",
-                       error: e.message,
-                       backtrace: e.backtrace.first(5),
-                       level: :error)
-      raise
+      # Standardize unexpected errors
+      error = ThreadAgent::ErrorHandler.standardize_error(e, {
+        operation: "job_execution",
+        workflow_run_id: workflow_run_id
+      })
+      ThreadAgent::ErrorHandler.log_error(error, {
+        step: "error_handling",
+        message: "Unexpected error in ProcessWorkflowJob"
+      })
+      raise error
     end
 
     private
@@ -77,29 +100,6 @@ module ThreadAgent
     # Integration tests expect exceptions to be raised for proper error handling testing
     def should_raise_exception_for_test?
       Rails.env.test? && caller.join("\n").include?("test/integration/")
-    end
-
-    # Determine the appropriate exception type based on error message
-    def determine_and_raise_exception(error_message)
-      # Ensure error_message is a string
-      error_text = error_message.is_a?(String) ? error_message : error_message.to_s
-
-      case error_text
-      when /Missing input data/, /Invalid input data/, /missing parent_message/, /thread_data structure/i
-        # Input validation errors should be treated as OpenAI errors in this workflow context
-        # since they prevent OpenAI processing from happening
-        raise ThreadAgent::OpenaiError, error_text
-      when /openai/i, /gpt/i, /chat completion/i
-        raise ThreadAgent::OpenaiError, error_text
-      when /notion/i, /database/i, /page creation/i
-        raise ThreadAgent::NotionError, error_text
-      when /slack.*api/i, /slack.*token/i, /slack.*channel/i, /slack.*fetch/i
-        # Only treat actual Slack API/fetching errors as Slack errors
-        raise ThreadAgent::SlackError, error_text
-      else
-        # Default to OpenAI error for workflow processing issues
-        raise ThreadAgent::OpenaiError, error_text
-      end
     end
   end
 end

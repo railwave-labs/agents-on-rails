@@ -116,19 +116,35 @@ module ThreadAgent
           ThreadAgent::Result.failure(error_message)
         end
 
-      rescue ThreadAgent::OpenaiError => e
-        log_with_context(workflow_run, "OpenAI processing failed with OpenaiError",
+      rescue ThreadAgent::Error => e
+        # Already standardized error - log and convert to result
+        ThreadAgent::ErrorHandler.log_error(e, level: :error)
+        log_with_context(workflow_run, "OpenAI processing failed with standardized error",
                          step: "openai_processing_failed",
+                         error_code: e.code,
                          error: e.message,
                          level: :error)
-        ThreadAgent::Result.failure("OpenAI processing failed: #{e.message}")
+        ThreadAgent::ErrorHandler.to_result(e, service: "openai")
       rescue StandardError => e
+        # Handle unexpected errors with ErrorHandler
+        standardized_error = ThreadAgent::ErrorHandler.standardize_error(
+          e,
+          context: {
+            component: "workflow_orchestrator_openai",
+            workflow_run_id: workflow_run.id,
+            template_id: workflow_run.template&.id
+          },
+          service: "openai"
+        )
+
+        ThreadAgent::ErrorHandler.log_error(standardized_error, level: :error)
         log_with_context(workflow_run, "Unexpected error during OpenAI processing",
                          step: "openai_processing_failed",
-                         error: e.message,
+                         error_code: standardized_error.code,
+                         error: standardized_error.message,
                          backtrace: e.backtrace.first(3),
                          level: :error)
-        ThreadAgent::Result.failure("Unexpected error: #{e.message}")
+        ThreadAgent::ErrorHandler.to_result(standardized_error, service: "openai")
       end
     end
 
