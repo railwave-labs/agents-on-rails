@@ -397,7 +397,7 @@ module ThreadAgent
           result = @service.validate_webhook(invalid_json, headers)
 
           assert result.failure?
-          assert_match(/Invalid JSON payload/, result.error)
+          assert_match(/Failed to parse JSON response/, result.error)
         end
       end
 

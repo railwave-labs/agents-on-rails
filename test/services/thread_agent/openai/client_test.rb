@@ -55,16 +55,16 @@ class ThreadAgent::Openai::ClientTest < ActiveSupport::TestCase
     assert_equal 25, client.timeout
   end
 
-  test "raises OpenaiError when API key missing" do
-    error = assert_raises(ThreadAgent::OpenaiError) do
+  test "raises OpenaiAuthError when API key missing" do
+    error = assert_raises(ThreadAgent::OpenaiAuthError) do
       ThreadAgent::Openai::Client.new(api_key: nil, model: "gpt-4")
     end
 
     assert_equal "Missing OpenAI API key", error.message
   end
 
-  test "raises OpenaiError when model missing" do
-    error = assert_raises(ThreadAgent::OpenaiError) do
+  test "raises ConfigurationError when model missing" do
+    error = assert_raises(ThreadAgent::ConfigurationError) do
       ThreadAgent::Openai::Client.new(api_key: "test-key", model: "")
     end
 
@@ -86,7 +86,7 @@ class ThreadAgent::Openai::ClientTest < ActiveSupport::TestCase
     client_instance.client
   end
 
-  test "raises OpenaiError when client initialization fails" do
+  test "raises Error when client initialization fails" do
     OpenAI::Client.expects(:new).raises(StandardError.new("Network error"))
 
     client_instance = ThreadAgent::Openai::Client.new(
@@ -94,11 +94,11 @@ class ThreadAgent::Openai::ClientTest < ActiveSupport::TestCase
       model: "gpt-4"
     )
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
+    error = assert_raises(ThreadAgent::Error) do
       client_instance.client
     end
 
-    assert_includes error.message, "Failed to initialize OpenAI client"
+    assert_includes error.message, "Unexpected error: Network error"
   end
 
   test "memoizes client after first initialization" do

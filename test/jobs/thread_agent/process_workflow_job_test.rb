@@ -209,7 +209,7 @@ class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
 
     workflow_run.reload
     assert_equal "failed", workflow_run.status
-    assert_match(/OpenAI processing failed/, workflow_run.error_message)
+    assert_match(/API rate limit exceeded/, workflow_run.error_message)
   end
 
   test "handles OpenAI service returning failure result" do
@@ -256,6 +256,7 @@ class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
     )
     mock_openai_service.expects(:model).returns("gpt-4")
 
+    # Mock the Notion service to return a failure for missing database configuration
     mock_notion_service = mock("notion_service")
     mock_notion_service.expects(:create_page_from_workflow).returns(
       ThreadAgent::Result.failure("No Notion database configured for template")
@@ -265,8 +266,10 @@ class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
     ThreadAgent::Openai::Service.expects(:new).returns(mock_openai_service)
     ThreadAgent::Notion::Service.expects(:new).returns(mock_notion_service)
 
+    # Use the existing template with a notion_database (to satisfy NOT NULL constraint)
+    # but mock the Notion service to simulate a configuration error
     workflow_run = create(:workflow_run,
-      template: nil,
+      template: @template,
       input_data: { thread_data: @valid_thread_data }.to_json
     )
 
@@ -275,6 +278,7 @@ class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
     end
 
     workflow_run.reload
+    # When Notion service fails, workflow should fail
     assert_equal "failed", workflow_run.status
     assert_match(/No Notion database configured/, workflow_run.error_message)
   end

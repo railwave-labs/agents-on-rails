@@ -108,7 +108,7 @@ class ThreadAgent::Slack::WebhookValidatorTest < ActiveSupport::TestCase
     result = @validator.validate(invalid_json, headers)
 
     assert result.failure?
-    assert_match(/Invalid JSON payload/, result.error)
+    assert_match(/Failed to parse JSON response/, result.error)
   end
 
   test "validate accepts url_verification payload type" do

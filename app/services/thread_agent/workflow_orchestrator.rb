@@ -39,26 +39,40 @@ module ThreadAgent
       })
 
       # Step 3: Notion Service Integration
-      notion_result = process_with_notion(workflow_run, thread_data, openai_result.data)
-      if notion_result.failure?
-        fail_workflow_run(workflow_run, "notion_processing_failed", notion_result.error)
-        return notion_result
+      # Skip Notion processing if no template or no database configured
+      if workflow_run.template&.notion_database
+        notion_result = process_with_notion(workflow_run, thread_data, openai_result.data)
+        if notion_result.failure?
+          fail_workflow_run(workflow_run, "notion_processing_failed", notion_result.error)
+          return notion_result
+        end
+
+        workflow_run.add_step("notion_processing_completed", data: {
+          page_url: notion_result.data[:url],
+          page_id: notion_result.data[:id],
+          database_id: notion_result.data[:database_id]
+        })
+
+        # Mark workflow as completed with Notion integration
+        workflow_run.mark_completed!({
+          slack_thread_data: thread_data,
+          openai_content: openai_result.data[:content],
+          ai_model_used: openai_result.data[:model],
+          notion_page_url: notion_result.data[:url],
+          notion_page_id: notion_result.data[:id]
+        })
+      else
+        # Mark workflow as completed without Notion integration
+        workflow_run.add_step("notion_processing_skipped", data: {
+          reason: "No template or database configured"
+        })
+
+        workflow_run.mark_completed!({
+          slack_thread_data: thread_data,
+          openai_content: openai_result.data[:content],
+          ai_model_used: openai_result.data[:model]
+        })
       end
-
-      workflow_run.add_step("notion_processing_completed", data: {
-        page_url: notion_result.data[:url],
-        page_id: notion_result.data[:id],
-        database_id: notion_result.data[:database_id]
-      })
-
-      # Mark workflow as completed
-      workflow_run.mark_completed!({
-        slack_thread_data: thread_data,
-        openai_content: openai_result.data[:content],
-        ai_model_used: openai_result.data[:model],
-        notion_page_url: notion_result.data[:url],
-        notion_page_id: notion_result.data[:id]
-      })
 
       log_with_context(workflow_run, "WorkflowOrchestrator completed workflow", step: "workflow_execution_completed")
       ThreadAgent::Result.success(workflow_run)
@@ -108,12 +122,21 @@ module ThreadAgent
             model: model_used
           })
         else
-          error_message = "OpenAI service returned error: #{result.error}"
+          # Create a proper OpenAI error instead of a string
+          openai_error = ThreadAgent::OpenaiError.new(
+            "OpenAI service returned error: #{result.error}",
+            context: {
+              component: "workflow_orchestrator_openai",
+              workflow_run_id: workflow_run.id,
+              template_id: workflow_run.template&.id
+            }
+          )
+
           log_with_context(workflow_run, "OpenAI processing failed",
                            step: "openai_processing_failed",
-                           error: error_message,
+                           error: openai_error.message,
                            level: :error)
-          ThreadAgent::Result.failure(error_message)
+          ThreadAgent::Result.failure(openai_error)
         end
 
       rescue ThreadAgent::Error => e
@@ -124,7 +147,7 @@ module ThreadAgent
                          error_code: e.code,
                          error: e.message,
                          level: :error)
-        ThreadAgent::ErrorHandler.to_result(e, service: "openai")
+        ThreadAgent::Result.failure(e)
       rescue StandardError => e
         # Handle unexpected errors with ErrorHandler
         standardized_error = ThreadAgent::ErrorHandler.standardize_error(
@@ -144,7 +167,7 @@ module ThreadAgent
                          error: standardized_error.message,
                          backtrace: e.backtrace.first(3),
                          level: :error)
-        ThreadAgent::ErrorHandler.to_result(standardized_error, service: "openai")
+        ThreadAgent::Result.failure(standardized_error)
       end
     end
 

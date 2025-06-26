@@ -10,6 +10,7 @@ module ThreadAgent
       ENV["THREAD_AGENT_OPENAI_MODEL"] = "gpt-4"
       ENV["THREAD_AGENT_SLACK_BOT_TOKEN"] = "xoxb-test-slack-token"
       ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-signing-secret"
+      ENV["THREAD_AGENT_NOTION_TOKEN"] = "test-notion-token"
 
       # Reset ThreadAgent configuration
       ThreadAgent.reset_configuration!
@@ -65,6 +66,30 @@ module ThreadAgent
 
       # Set up WebMock for external API calls
       WebMock.reset!
+
+      # Set up generic Notion API stub for successful workflow completion
+      # This stub will handle all Notion page creation requests
+      @notion_page_response = {
+        "id" => "page_123456",
+        "url" => "https://notion.so/page_123456",
+        "created_time" => "2025-06-26T11:10:41.000Z",
+        "properties" => {}
+      }.to_json
+
+      stub_request(:post, "https://api.notion.com/v1/pages")
+        .with(
+          headers: {
+            "Accept" => "application/json; charset=utf-8",
+            "Authorization" => "Bearer test-notion-token",
+            "Content-Type" => "application/json",
+            "Notion-Version" => "2022-02-22"
+          }
+        )
+        .to_return(
+          status: 200,
+          body: @notion_page_response,
+          headers: { "Content-Type" => "application/json" }
+        )
     end
 
     def teardown
@@ -73,6 +98,7 @@ module ThreadAgent
       ENV.delete("THREAD_AGENT_OPENAI_MODEL")
       ENV.delete("THREAD_AGENT_SLACK_BOT_TOKEN")
       ENV.delete("THREAD_AGENT_SLACK_SIGNING_SECRET")
+      ENV.delete("THREAD_AGENT_NOTION_TOKEN")
 
       # Reset WebMock
       WebMock.reset!

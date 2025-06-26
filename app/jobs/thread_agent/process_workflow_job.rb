@@ -20,17 +20,28 @@ module ThreadAgent
 
         # Handle orchestrator failures by re-raising exceptions for test compatibility
         if result.failure? && should_raise_exception_for_test?
-          # Use ErrorHandler to standardize the error and then raise it
-          error = result.error.is_a?(ThreadAgent::Error) ? result.error :
-                  ThreadAgent::ErrorHandler.standardize_error(result.error, {
-                    operation: "workflow_execution",
-                    workflow_run_id: workflow_run_id
-                  })
+          # Handle different types of errors from result.error
+          error = if result.error.is_a?(ThreadAgent::Error)
+                    result.error
+          elsif result.error.is_a?(Exception)
+                    ThreadAgent::ErrorHandler.standardize_error(result.error,
+                      context: {
+                        operation: "workflow_execution",
+                        workflow_run_id: workflow_run_id
+                      })
+          else
+                    # Handle string errors or other types
+                    ThreadAgent::Error.new(
+                      result.error.to_s,
+                      code: "workflow.execution.failed",
+                      context: {
+                        operation: "workflow_execution",
+                        workflow_run_id: workflow_run_id
+                      }
+                    )
+          end
 
-          ThreadAgent::ErrorHandler.log_error(error, {
-            step: "error_handling",
-            message: "WorkflowOrchestrator failed, re-raising exception for test"
-          })
+          ThreadAgent::ErrorHandler.log_error(error)
 
           raise error
         end
@@ -41,32 +52,25 @@ module ThreadAgent
       # Return workflow_run for integration test compatibility
       workflow_run
     rescue ActiveRecord::RecordNotFound => e
-      error = ThreadAgent::ErrorHandler.standardize_error(e, {
-        operation: "workflow_run_lookup",
-        workflow_run_id: workflow_run_id
-      })
-      ThreadAgent::ErrorHandler.log_error(error, {
-        step: "error_handling",
-        message: "WorkflowRun not found"
-      })
+      error = ThreadAgent::ErrorHandler.standardize_error(e,
+        context: {
+          operation: "workflow_run_lookup",
+          workflow_run_id: workflow_run_id
+        })
+      ThreadAgent::ErrorHandler.log_error(error)
       raise error
     rescue ThreadAgent::Error => e
       # Already standardized ThreadAgent errors - just log and re-raise
-      ThreadAgent::ErrorHandler.log_error(e, {
-        step: "error_handling",
-        message: "ThreadAgent error in ProcessWorkflowJob"
-      })
+      ThreadAgent::ErrorHandler.log_error(e)
       raise e
     rescue StandardError => e
       # Standardize unexpected errors
-      error = ThreadAgent::ErrorHandler.standardize_error(e, {
-        operation: "job_execution",
-        workflow_run_id: workflow_run_id
-      })
-      ThreadAgent::ErrorHandler.log_error(error, {
-        step: "error_handling",
-        message: "Unexpected error in ProcessWorkflowJob"
-      })
+      error = ThreadAgent::ErrorHandler.standardize_error(e,
+        context: {
+          operation: "job_execution",
+          workflow_run_id: workflow_run_id
+        })
+      ThreadAgent::ErrorHandler.log_error(error)
       raise error
     end
 

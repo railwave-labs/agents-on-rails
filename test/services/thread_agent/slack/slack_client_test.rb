@@ -39,15 +39,29 @@ class ThreadAgent::Slack::SlackClientTest < ActiveSupport::TestCase
   end
 
   test "raises error with missing bot token" do
+    # Clear configuration to ensure we're testing missing token scenario
+    original_bot_token = ThreadAgent.configuration.slack_bot_token
+    ThreadAgent.configuration.slack_bot_token = nil
+
     assert_raises(ThreadAgent::SlackError) do
       ThreadAgent::Slack::SlackClient.new(bot_token: nil, signing_secret: "test-secret")
     end
+
+    # Restore original config
+    ThreadAgent.configuration.slack_bot_token = original_bot_token
   end
 
   test "raises error with missing signing secret" do
+    # Clear configuration to ensure we're testing missing secret scenario
+    original_signing_secret = ThreadAgent.configuration.slack_signing_secret
+    ThreadAgent.configuration.slack_signing_secret = nil
+
     assert_raises(ThreadAgent::SlackError) do
       ThreadAgent::Slack::SlackClient.new(bot_token: "xoxb-valid-token", signing_secret: nil)
     end
+
+    # Restore original config
+    ThreadAgent.configuration.slack_signing_secret = original_signing_secret
   end
 
   test "uses ThreadAgent configuration by default" do

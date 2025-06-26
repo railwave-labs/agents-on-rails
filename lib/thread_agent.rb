@@ -157,99 +157,99 @@ module ThreadAgent
 
   # Configuration and setup errors (non-retryable)
   class ConfigurationError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "configuration.invalid", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "configuration.invalid", context: context, retryable: retryable)
     end
   end
 
   # Slack API and webhook errors
   class SlackError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "slack.request.failed", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "slack.request.failed", context: context, retryable: retryable)
     end
   end
 
   # Slack authentication errors (non-retryable)
   class SlackAuthError < SlackError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "slack.auth.invalid", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "slack.auth.invalid", context: context, retryable: retryable)
     end
   end
 
   # Slack rate limit errors (retryable with backoff)
   class SlackRateLimitError < SlackError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "slack.rate_limit.exceeded", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "slack.rate_limit.exceeded", context: context, retryable: retryable)
     end
   end
 
   # OpenAI API errors
   class OpenaiError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "openai.request.failed", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "openai.request.failed", context: context, retryable: retryable)
     end
   end
 
   # OpenAI authentication errors (non-retryable)
   class OpenaiAuthError < OpenaiError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "openai.auth.invalid", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "openai.auth.invalid", context: context, retryable: retryable)
     end
   end
 
   # OpenAI rate limit errors (retryable with backoff)
   class OpenaiRateLimitError < OpenaiError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "openai.rate_limit.exceeded", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "openai.rate_limit.exceeded", context: context, retryable: retryable)
     end
   end
 
   # Notion API errors
   class NotionError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "notion.request.failed", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "notion.request.failed", context: context, retryable: retryable)
     end
   end
 
   # Notion authentication errors (non-retryable)
   class NotionAuthError < NotionError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "notion.auth.invalid", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "notion.auth.invalid", context: context, retryable: retryable)
     end
   end
 
   # Notion rate limit errors (retryable with backoff)
   class NotionRateLimitError < NotionError
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "notion.rate_limit.exceeded", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "notion.rate_limit.exceeded", context: context, retryable: retryable)
     end
   end
 
   # Data validation and transformation errors (non-retryable)
   class ValidationError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "validation.failed", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "validation.failed", context: context, retryable: retryable)
     end
   end
 
   # JSON parsing errors (non-retryable)
   class ParseError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "parse.json.failed", context: context, retryable: false)
+    def initialize(message = nil, code: nil, context: {}, retryable: false)
+      super(message, code: code || "parse.json.failed", context: context, retryable: retryable)
     end
   end
 
   # Timeout errors (retryable)
   class TimeoutError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "request.timeout", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "request.timeout", context: context, retryable: retryable)
     end
   end
 
   # Network connection errors (retryable)
   class ConnectionError < Error
-    def initialize(message = nil, code: nil, context: {})
-      super(message, code: code || "connection.failed", context: context, retryable: true)
+    def initialize(message = nil, code: nil, context: {}, retryable: true)
+      super(message, code: code || "connection.failed", context: context, retryable: retryable)
     end
   end
 end
