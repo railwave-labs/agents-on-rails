@@ -6,7 +6,7 @@ module ThreadAgent
     # @param workflow_run [WorkflowRun] The workflow run to process
     # @return [ThreadAgent::Result] Result object with success or error
     def self.execute_workflow(workflow_run)
-      Rails.logger.info("WorkflowOrchestrator executing workflow for workflow_run: #{workflow_run.id}")
+      log_with_context(workflow_run, "WorkflowOrchestrator executing workflow", step: "workflow_execution_started")
 
       # Start the workflow execution
       workflow_run.mark_started!
@@ -59,14 +59,14 @@ module ThreadAgent
         notion_page_id: notion_result.data[:id]
       })
 
-      Rails.logger.info("WorkflowOrchestrator completed workflow for workflow_run: #{workflow_run.id}")
+      log_with_context(workflow_run, "WorkflowOrchestrator completed workflow", step: "workflow_execution_completed")
       ThreadAgent::Result.success(workflow_run)
     end
 
     private_class_method
 
     def self.process_with_slack(workflow_run)
-      Rails.logger.info("WorkflowOrchestrator: Starting Slack processing for workflow_run: #{workflow_run.id}")
+      log_with_context(workflow_run, "Starting Slack processing", step: "slack_processing_started")
 
       # Validate input using the new validator
       validation_result = ThreadAgent::Slack::WorkflowValidator.validate_workflow_input(workflow_run)
@@ -78,7 +78,9 @@ module ThreadAgent
     end
 
     def self.process_with_openai(workflow_run, thread_data)
-      Rails.logger.info("WorkflowOrchestrator: Starting OpenAI processing for workflow_run: #{workflow_run.id}")
+      log_with_context(workflow_run, "Starting OpenAI processing",
+                       step: "openai_processing_started",
+                       thread_message_count: thread_data[:replies]&.length || 0)
 
       begin
         # Initialize OpenAI service
@@ -92,29 +94,47 @@ module ThreadAgent
         )
 
         if result.success?
-          Rails.logger.info("WorkflowOrchestrator: OpenAI processing completed successfully for workflow_run: #{workflow_run.id}")
+          # Store model to avoid multiple calls for tests
+          model_used = openai_service.model
+
+          log_with_context(workflow_run, "OpenAI processing completed successfully",
+                           step: "openai_processing_completed",
+                           model_used: model_used,
+                           content_length: result.data.length)
 
           ThreadAgent::Result.success({
             content: result.data,
-            model: openai_service.model
+            model: model_used
           })
         else
           error_message = "OpenAI service returned error: #{result.error}"
-          Rails.logger.error("WorkflowOrchestrator: OpenAI processing failed for workflow_run #{workflow_run.id}: #{error_message}")
+          log_with_context(workflow_run, "OpenAI processing failed",
+                           step: "openai_processing_failed",
+                           error: error_message,
+                           level: :error)
           ThreadAgent::Result.failure(error_message)
         end
 
       rescue ThreadAgent::OpenaiError => e
-        Rails.logger.error("WorkflowOrchestrator: OpenAI processing failed for workflow_run #{workflow_run.id}: #{e.message}")
+        log_with_context(workflow_run, "OpenAI processing failed with OpenaiError",
+                         step: "openai_processing_failed",
+                         error: e.message,
+                         level: :error)
         ThreadAgent::Result.failure("OpenAI processing failed: #{e.message}")
       rescue StandardError => e
-        Rails.logger.error("WorkflowOrchestrator: Unexpected error during OpenAI processing for workflow_run #{workflow_run.id}: #{e.message}")
+        log_with_context(workflow_run, "Unexpected error during OpenAI processing",
+                         step: "openai_processing_failed",
+                         error: e.message,
+                         backtrace: e.backtrace.first(3),
+                         level: :error)
         ThreadAgent::Result.failure("Unexpected error: #{e.message}")
       end
     end
 
     def self.process_with_notion(workflow_run, thread_data, openai_data)
-      Rails.logger.info("WorkflowOrchestrator: Starting Notion processing for workflow_run: #{workflow_run.id}")
+      log_with_context(workflow_run, "Starting Notion processing",
+                       step: "notion_processing_started",
+                       database_id: workflow_run.template&.notion_database&.notion_database_id)
 
       # Initialize Notion service and delegate to workflow page creation
       notion_service = ThreadAgent::Notion::Service.new(max_retries: 3)
@@ -125,7 +145,10 @@ module ThreadAgent
       )
 
       if result.success?
-        Rails.logger.info("WorkflowOrchestrator: Notion processing completed successfully for workflow_run: #{workflow_run.id}")
+        log_with_context(workflow_run, "Notion processing completed successfully",
+                         step: "notion_processing_completed",
+                         page_id: result.data[:id],
+                         page_url: result.data[:url])
 
         # Return enriched result data
         ThreadAgent::Result.success({
@@ -143,7 +166,36 @@ module ThreadAgent
     def self.fail_workflow_run(workflow_run, step_name, error_message)
       workflow_run.fail_step(step_name, error_message)
       workflow_run.mark_failed!(error_message)
-      Rails.logger.error("WorkflowOrchestrator: Workflow failed for workflow_run #{workflow_run.id}: #{error_message}")
+      log_with_context(workflow_run, "Workflow failed",
+                       step: step_name,
+                       error: error_message,
+                       level: :error)
+    end
+
+    # Log with structured context including workflow_run_id and step_name
+    # @param workflow_run [WorkflowRun] The workflow run for context
+    # @param message [String] The log message
+    # @param step [String] The current step name
+    # @param level [Symbol] Log level (:info, :error, :warn, :debug)
+    # @param **context [Hash] Additional context data
+    def self.log_with_context(workflow_run, message, step:, level: :info, **context)
+      structured_data = {
+        workflow_run_id: workflow_run.id,
+        step_name: step,
+        service_class: self.name,
+        workflow_name: workflow_run.workflow_name
+      }.merge(context)
+
+      case level
+      when :error
+        Rails.logger.error("#{message} - #{structured_data.to_json}")
+      when :warn
+        Rails.logger.warn("#{message} - #{structured_data.to_json}")
+      when :debug
+        Rails.logger.debug("#{message} - #{structured_data.to_json}")
+      else
+        Rails.logger.info("#{message} - #{structured_data.to_json}")
+      end
     end
   end
 end
