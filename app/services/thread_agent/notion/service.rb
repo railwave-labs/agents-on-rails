@@ -44,10 +44,25 @@ module ThreadAgent
         database_service.get_database(database_id)
       end
 
-      # Delegate page operations to page_service
-      def create_page(database_id:, properties: {}, content: [])
-        page_service.create_page(database_id: database_id, properties: properties, content: content)
-      end
+  # Delegate page operations to page_service
+  def create_page(database_id:, properties: {}, content: [])
+    page_service.create_page(database_id: database_id, properties: properties, content: content)
+  end
+
+  # Create a page using thread data and AI content with intelligent building
+  def create_page_from_workflow(thread_data:, workflow_run:, openai_data:)
+    return ThreadAgent::Result.failure("No Notion database configured for template") unless workflow_run.template&.notion_database
+
+    database_id = workflow_run.template.notion_database.notion_database_id
+
+    # Build page data using the page builder
+    page_builder = PageBuilder.new(thread_data, workflow_run, openai_data)
+    properties = page_builder.build_properties
+    content = page_builder.build_content
+
+    # Create page using the service
+    create_page(database_id: database_id, properties: properties, content: content)
+  end
 
       private
 

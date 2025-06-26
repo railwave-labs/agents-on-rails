@@ -2,21 +2,27 @@
 
 module ThreadAgent
   module Slack
-    class Service
-      attr_reader :slack_client, :retry_handler, :thread_fetcher, :shortcut_handler
+      class Service
+    attr_reader :slack_client, :retry_handler, :thread_fetcher, :shortcut_handler, :thread_processor
 
-      def initialize(bot_token: nil, signing_secret: nil, timeout: 15, open_timeout: 5, max_retries: 3)
-        @slack_client = SlackClient.new(
-          bot_token: bot_token,
-          signing_secret: signing_secret,
-          timeout: timeout,
-          open_timeout: open_timeout,
-          max_retries: max_retries
-        )
-        @retry_handler = RetryHandler.new(max_attempts: max_retries)
-        @thread_fetcher = ThreadFetcher.new(@slack_client, @retry_handler)
-        @shortcut_handler = ShortcutHandler.new(@slack_client, @retry_handler)
-      end
+    def initialize(bot_token: nil, signing_secret: nil, timeout: 15, open_timeout: 5, max_retries: 3)
+      @slack_client = SlackClient.new(
+        bot_token: bot_token,
+        signing_secret: signing_secret,
+        timeout: timeout,
+        open_timeout: open_timeout,
+        max_retries: max_retries
+      )
+
+      # Validate client immediately to ensure proper error handling in tests
+      # This ensures that validation errors are raised during initialization
+      validate_client_initialization!
+
+      @retry_handler = RetryHandler.new(max_attempts: max_retries)
+      @thread_fetcher = ThreadFetcher.new(@slack_client, @retry_handler)
+      @shortcut_handler = ShortcutHandler.new(@slack_client, @retry_handler)
+      @thread_processor = ThreadProcessor.new(self)
+    end
 
       # Delegate configuration attributes to slack_client
       def bot_token
@@ -86,31 +92,48 @@ module ThreadAgent
         shortcut_handler.create_modal(trigger_id, workspaces, templates)
       end
 
-      # Handle modal submission events
-      # @param payload [Hash] The Slack view submission payload
-      # @return [ThreadAgent::Result] Result object indicating success or failure
-      def handle_modal_submission(payload)
-        return ThreadAgent::Result.failure("Invalid payload type") unless payload["type"] == "view_submission"
+  # Handle modal submission events
+  # @param payload [Hash] The Slack view submission payload
+  # @return [ThreadAgent::Result] Result object indicating success or failure
+  def handle_modal_submission(payload)
+    return ThreadAgent::Result.failure("Invalid payload type") unless payload["type"] == "view_submission"
 
-        Rails.logger.info("Processing modal submission for user: #{payload.dig('user', 'id')}")
+    Rails.logger.info("Processing modal submission for user: #{payload.dig('user', 'id')}")
 
-        # Extract submitted values for validation
-        view = payload["view"]
-        state_values = view&.dig("state", "values") || {}
+    # Extract submitted values for validation
+    view = payload["view"]
+    state_values = view&.dig("state", "values") || {}
 
-        # Basic validation - ensure we have required modal data
-        if view.nil? || state_values.empty?
-          return ThreadAgent::Result.failure("Missing modal submission data")
-        end
-
-        # Log the submission details for debugging
-        Rails.logger.info("Modal state values: #{state_values.inspect}")
-
-        ThreadAgent::Result.success("Modal submission processed successfully")
-      rescue StandardError => e
-        Rails.logger.error("Error processing modal submission: #{e.message}")
-        ThreadAgent::Result.failure("Failed to process modal submission: #{e.message}")
-      end
+    # Basic validation - ensure we have required modal data
+    if view.nil? || state_values.empty?
+      return ThreadAgent::Result.failure("Missing modal submission data")
     end
+
+    # Log the submission details for debugging
+    Rails.logger.info("Modal state values: #{state_values.inspect}")
+
+    ThreadAgent::Result.success("Modal submission processed successfully")
+  rescue StandardError => e
+    Rails.logger.error("Error processing modal submission: #{e.message}")
+    ThreadAgent::Result.failure("Failed to process modal submission: #{e.message}")
+  end
+
+  # Delegate thread processing to thread_processor
+  # @param workflow_run [WorkflowRun] The workflow run to process
+  # @return [ThreadAgent::Result] Result object with thread data or error
+  def process_workflow_input(workflow_run)
+    thread_processor.process_workflow_input(workflow_run)
+  end
+
+  private
+
+  # Validate client initialization to ensure errors are raised immediately
+  def validate_client_initialization!
+    # Trigger validation by accessing configuration methods
+    # This will cause SlackClient validation errors to be raised during Service initialization
+    slack_client.bot_token
+    slack_client.signing_secret
+  end
+      end
   end
 end

@@ -8,6 +8,8 @@ module ThreadAgent
       # Set up environment variables for testing
       ENV["THREAD_AGENT_OPENAI_API_KEY"] = "test-openai-key"
       ENV["THREAD_AGENT_OPENAI_MODEL"] = "gpt-4"
+      ENV["THREAD_AGENT_SLACK_BOT_TOKEN"] = "xoxb-test-slack-token"
+      ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-signing-secret"
 
       # Reset ThreadAgent configuration
       ThreadAgent.reset_configuration!
@@ -69,6 +71,8 @@ module ThreadAgent
       # Clean up environment variables
       ENV.delete("THREAD_AGENT_OPENAI_API_KEY")
       ENV.delete("THREAD_AGENT_OPENAI_MODEL")
+      ENV.delete("THREAD_AGENT_SLACK_BOT_TOKEN")
+      ENV.delete("THREAD_AGENT_SLACK_SIGNING_SECRET")
 
       # Reset WebMock
       WebMock.reset!
@@ -97,18 +101,14 @@ module ThreadAgent
         slack_channel_id: @thread_data[:channel_id],
         slack_message_id: @thread_data[:thread_ts],
         slack_thread_ts: @thread_data[:thread_ts],
-        status: "running"
+        status: "running",
+        input_data: { thread_data: @thread_data }.to_json
       )
-
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
 
       # Execute the job - this tests the integration pipeline
       result = nil
       assert_nothing_raised do
-        result = ProcessWorkflowJob.perform_now(job_payload)
+        result = ProcessWorkflowJob.perform_now(workflow_run.id)
       end
 
       # Verify job completed successfully
@@ -163,17 +163,13 @@ module ThreadAgent
         end
 
       workflow_run = create(:workflow_run,
-        template: @template
+        template: @template,
+        input_data: { thread_data: @thread_data }.to_json
       )
-
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
 
       # Job should succeed after retries
       assert_nothing_raised do
-        ProcessWorkflowJob.perform_now(job_payload)
+        ProcessWorkflowJob.perform_now(workflow_run.id)
       end
 
       # Verify retry behavior worked correctly
@@ -187,20 +183,16 @@ module ThreadAgent
         .to_return(status: 500, body: "Internal Server Error")
 
       workflow_run = create(:workflow_run,
-        template: @template
+        template: @template,
+        input_data: { thread_data: @thread_data }.to_json
       )
-
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
 
       # Job should raise ThreadAgent::OpenaiError after retries exhausted
       # ActiveJob's retry_on will eventually re-raise the error after all attempts
       assert_raises(ThreadAgent::OpenaiError) do
         # Disable retry_on for this test by performing the job directly
         job = ProcessWorkflowJob.new
-        job.perform(job_payload)
+        job.perform(workflow_run.id)
       end
     end
 
@@ -209,17 +201,17 @@ module ThreadAgent
       workflow_run = create(:workflow_run, template: @template)
 
       # Test with various invalid thread_data structures
-      invalid_payloads = [
-        { workflow_run_id: workflow_run.id, thread_data: nil },
-        { workflow_run_id: workflow_run.id, thread_data: {} },
-        { workflow_run_id: workflow_run.id, thread_data: { replies: [] } } # missing parent_message
+      invalid_workflow_runs = [
+        create(:workflow_run, template: @template, input_data: nil),
+        create(:workflow_run, template: @template, input_data: {}.to_json),
+        create(:workflow_run, template: @template, input_data: { replies: [] }.to_json) # missing parent_message
       ]
 
-      invalid_payloads.each do |payload|
+      invalid_workflow_runs.each do |invalid_run|
         assert_raises(ThreadAgent::OpenaiError) do
           # Disable retry_on for this test by performing the job directly
           job = ProcessWorkflowJob.new
-          job.perform(payload)
+          job.perform(invalid_run.id)
         end
       end
 
@@ -244,16 +236,12 @@ module ThreadAgent
       )
 
       workflow_run = create(:workflow_run,
-        template: custom_template
+        template: custom_template,
+        input_data: { thread_data: @thread_data }.to_json
       )
 
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
-
       assert_nothing_raised do
-        ProcessWorkflowJob.perform_now(job_payload)
+        ProcessWorkflowJob.perform_now(workflow_run.id)
       end
 
       # Verify template content was used in system message
@@ -275,16 +263,12 @@ module ThreadAgent
         )
 
       workflow_run = create(:workflow_run,
-        template: nil # No template provided
+        template: nil, # No template provided
+        input_data: { thread_data: @thread_data }.to_json
       )
 
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
-
       assert_nothing_raised do
-        ProcessWorkflowJob.perform_now(job_payload)
+        ProcessWorkflowJob.perform_now(workflow_run.id)
       end
 
       # Verify OpenAI was called with default system prompt
@@ -310,12 +294,10 @@ module ThreadAgent
           headers: { "Content-Type" => "application/json" }
         )
 
-      workflow_run = create(:workflow_run, template: @template)
-
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: @thread_data
-      }
+      workflow_run = create(:workflow_run,
+        template: @template,
+        input_data: { thread_data: @thread_data }.to_json
+      )
 
       # Capture instrumentation events
       events = []
@@ -323,7 +305,7 @@ module ThreadAgent
         events << { name: name, payload: payload }
       end
 
-      ProcessWorkflowJob.perform_now(job_payload)
+      ProcessWorkflowJob.perform_now(workflow_run.id)
 
       # Verify instrumentation was triggered
       assert_equal 1, events.size
@@ -363,15 +345,13 @@ module ThreadAgent
           headers: { "Content-Type" => "application/json" }
         )
 
-      workflow_run = create(:workflow_run, template: @template)
-
-      job_payload = {
-        workflow_run_id: workflow_run.id,
-        thread_data: complex_thread_data
-      }
+      workflow_run = create(:workflow_run,
+        template: @template,
+        input_data: { thread_data: complex_thread_data }.to_json
+      )
 
       assert_nothing_raised do
-        ProcessWorkflowJob.perform_now(job_payload)
+        ProcessWorkflowJob.perform_now(workflow_run.id)
       end
 
       # Verify complex thread data was included in the request

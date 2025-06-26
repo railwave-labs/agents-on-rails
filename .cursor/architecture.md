@@ -1,40 +1,40 @@
-# 🧱 Architecture Overview
+# 🏗️ Thread Agent - Architecture Overview
 
 ## 1. System Overview
 
-**Agents on Rails** is a Ruby on Rails application that provides automated workflow processing through AI-powered agents. The system orchestrates complex workflows by integrating Slack for user interaction, OpenAI for intelligent processing, and Notion for data management. Originally designed as a workflow automation platform, the application follows a **modular monolith** architecture pattern with the core functionality organized around the `ThreadAgent` domain.
+Thread Agent is a **modular monolithic** Rails application that serves as a Slack-to-Notion integration platform. The system captures Slack message threads, processes them using AI (OpenAI), and transforms them into structured Notion documents. The application is architected as a **gem-extraction ready** system, with all functionality cleanly namespaced under the `ThreadAgent` module to enable future extraction as a standalone gem.
 
-The system processes user-initiated workflows from Slack, leverages AI to understand and execute tasks, and manages results in structured Notion databases. It's built to handle real-time webhook processing, background job execution, and multi-step workflow orchestration.
+The application follows an **event-driven architecture** for webhook processing and uses **background job processing** for AI-powered transformations. It implements a comprehensive workflow orchestration system that tracks each step of the thread-to-notion transformation process.
+
+**Architecture Style**: Modular Monolith with Gem-Ready Organization
+**Domain**: Single-domain focused on workflow orchestration and external service integration
+**Processing Model**: Synchronous webhook handling + Asynchronous AI processing
 
 ## 2. Tech Stack
 
-### Core Framework
-- **Ruby**: Latest stable version  
-- **Rails**: Rails 8.0.2 with modern conventions
-- **Database**: SQLite3 2.1+ with multiple database approach
+- **Ruby**: 3.x+ (using modern syntax like pattern matching, endless methods)
+- **Rails**: 8.0+ (latest Active Record features, Solid Queue)
+- **Database**: SQLite (development), PostgreSQL (production)
+- **Background Jobs**: Solid Queue (Rails 8 native job processing)
+- **Frontend**: Hotwire (Turbo + Stimulus), Tailwind CSS
+- **Testing**: Minitest with Factory Bot patterns
 
-### Key Gems & Libraries
-- **Hotwire** (Turbo + Stimulus): Modern SPA-like interactions
-- **Tailwind CSS**: Utility-first styling framework
-- **Solid Suite**: Database-backed infrastructure (SolidQueue, SolidCache, SolidCable)
-- **Testing**: Factory Bot, Mocha, WebMock for comprehensive testing
+### Key Dependencies
+- **External APIs**: `ruby-openai`, `notion-ruby-client`, Custom Slack client
+- **HTTP Client**: Faraday (for external service communications)
+- **Configuration**: Environment-based with override patterns
+- **Authentication**: HTTP Basic Auth (admin interface)
 
 ### External Services
-- **Slack API**: Webhook processing, message formatting, modal interactions (via slack-ruby-client)
-- **OpenAI API**: GPT-based intelligent workflow processing (via ruby-openai ~7.0)
-- **Notion API**: Database management and content organization
-
-### Infrastructure
-- **SQLite3**: Multiple specialized databases (primary, cache, queue, cable)
-- **SolidQueue**: Database-backed background job processing (no Redis needed)
-- **SolidCache & SolidCable**: Database-backed caching and WebSocket functionality
-- **Propshaft**: Modern Rails 8 asset pipeline
+- **Slack API**: Bot tokens, webhook events, modal interactions
+- **OpenAI API**: GPT-4o-mini for content transformation
+- **Notion API**: Workspace and database management, page creation
 
 ## 3. High-Level File Structure
 
 ```
 app/
-├── controllers/           # HTTP request handling
+├── controllers/
 │   └── thread_agent/     # Domain-specific controllers
 ├── jobs/                 # Background job processing
 │   └── thread_agent/     # Workflow processing jobs
@@ -45,6 +45,22 @@ app/
 ├── validators/           # Custom validation logic
 └── views/                # Presentation layer
     └── thread_agent/     # Domain-specific views
+
+lib/
+└── thread_agent/         # Core module and shared utilities
+    └── result.rb         # Result pattern implementation
+
+config/
+├── initializers/
+│   └── thread_agent.rb   # Module configuration
+└── routes.rb             # Scoped routing under /thread_agent
+
+test/
+├── controllers/thread_agent/  # Controller tests
+├── jobs/thread_agent/         # Job tests
+├── models/thread_agent/       # Model tests
+├── services/thread_agent/     # Service tests
+└── lib/thread_agent/          # Library tests
 ```
 
 ### Domain Organization
@@ -132,71 +148,124 @@ Slack Thread → Webhook → WorkflowRun → ProcessWorkflowJob → OpenAI → N
 - **Message Formatting**: Structured response presentation
 
 ### OpenAI Integration
-- **Message Building**: Context-aware prompt construction
-- **Response Processing**: Intelligent content analysis and generation
-- **Error Handling**: Robust API interaction with retry logic
+- **Content Transformation**: AI-powered thread analysis
+- **Template Processing**: Customizable prompt engineering
+- **Error Handling**: Robust API failure management
+- **Model Configuration**: Flexible model selection (GPT-4o-mini default)
 
 ### Notion Integration
 - **Workspace Management**: Multi-workspace support
-- **Database Operations**: Structured data creation and updates
-- **Authentication**: Secure API access management
+- **Database Operations**: Dynamic database selection
+- **Page Creation**: Structured content generation
+- **Access Control**: Token-based authentication
 
 ## 8. Testing Strategy
 
-### Framework: Minitest
-- **Test Organization**: Domain-specific test structure matching app organization
-- **Factory Pattern**: Comprehensive test data factories
-- **Integration Testing**: End-to-end workflow validation
-- **Service Testing**: Isolated service object testing
-- **Webhook Testing**: Secure webhook validation testing
+### Framework & Organization
+- **Framework**: Minitest with Rails 8 conventions
+- **Structure**: Mirror app/ structure under test/
+- **Factories**: Custom factory patterns for ThreadAgent models
+- **Mocking**: Service-level mocking for external APIs
 
-### Testing Conventions
-- **System Tests**: User workflow validation
-- **Integration Tests**: Multi-service interaction testing
-- **Unit Tests**: Individual component isolation
-- **Mock Strategy**: External API mocking with WebMock/VCR
+### Test Patterns
+- **Unit Tests**: Service objects, models, and utilities
+- **Integration Tests**: End-to-end workflow validation
+- **System Tests**: Slack webhook to Notion page creation
+- **Mock Strategy**: External API calls mocked at service layer
+
+### Coverage Standards
+- **Service Objects**: Complete coverage including error paths
+- **Models**: Validation and relationship testing
+- **Jobs**: Background processing and retry logic
+- **Controllers**: Webhook handling and error responses
 
 ## 9. Deployment & Environments
 
-### Application Architecture
-- **Web Process**: HTTP request handling
-- **Worker Process**: Background job processing
-- **Database**: PostgreSQL with multiple schemas
-- **Queue Management**: Dedicated queue processing
+### Configuration Management
+- **Environment Variables**: API keys and sensitive configuration
+- **ThreadAgent.configure**: Block-based configuration pattern
+- **Defaults**: Sensible defaults with environment overrides
+- **Validation**: Configuration completeness checking
 
-### Environment Structure
-- **Development**: Local development with external API mocking
-- **Test**: Isolated testing environment
-- **Production**: Live system with full external integrations
+### Background Processing
+- **Solid Queue**: Rails 8 native job processing
+- **SafetyNetRetries**: Multi-level retry strategies
+- **Queue Management**: Priority-based job processing
+- **Monitoring**: Job status tracking and error reporting
 
-## 10. SaaS & Multi-Tenancy Strategy
+## 10. Gem-Ready Architecture Strategy
 
-### Current Architecture
-- **Single-Tenant**: Currently designed for single organization use
-- **Workspace Scoping**: Notion workspace-based data isolation
-- **Template System**: Reusable workflow configurations
+### Namespace Organization
+All components are organized under the `ThreadAgent` module for clean extraction:
 
-### Future Evolution
-- **Multi-Tenant Support**: Planned expansion for multiple organizations
-- **API Exposure**: Potential REST/GraphQL API for external integrations
-- **Role Management**: User permission and access control
+```ruby
+# Configuration pattern ready for gem extraction
+module ThreadAgent
+  class Configuration
+    # Environment-based defaults with override capability
+  end
+  
+  def self.configure
+    yield(configuration)
+  end
+end
+```
+
+### Route Scoping
+```ruby
+# All routes under /thread_agent namespace
+Rails.application.routes.draw do
+  scope path: '/thread_agent', module: 'thread_agent' do
+    # Routes ready for engine mounting
+  end
+end
+```
+
+### Database Strategy
+- **Table Prefixes**: All tables prefixed with `thread_agent_`
+- **Namespace Models**: All models under `ThreadAgent` module
+- **Clean Migration**: Extraction-ready database structure
+
+### Service Architecture
+- **Result Objects**: Consistent return patterns across services
+- **Configuration Injection**: Easy testing and future gem configuration
+- **External Dependencies**: Isolated to ThreadAgent namespace
 
 ## 11. Known Constraints / Technical Debt
 
 ### Current Limitations
-- **Single-Tenant Architecture**: Requires evolution for SaaS scaling
-- **Webhook Security**: Consider enhanced authentication mechanisms
-- **Error Recovery**: Improve failed workflow recovery mechanisms
-- **Performance Monitoring**: Add comprehensive application monitoring
+- **Single-Tenant**: No multi-tenancy isolation (Slack team scoping only)
+- **File Attachments**: Not yet supported in thread processing
+- **Real-time Notifications**: Limited to Slack modal responses
+- **AI Model Configuration**: Basic model selection, no advanced tuning
 
-### Technical Considerations
-- **API Rate Limiting**: Implement proper rate limiting for external APIs
-- **Data Validation**: Enhanced validation for external data inputs
-- **Caching Strategy**: Implement caching for frequently accessed data
-- **Logging Enhancement**: Structured logging for better observability
+### Future Extraction Considerations
+- **Engine Migration**: Service layer ready for Rails engine extraction
+- **Configuration Evolution**: ThreadAgent.configure pattern scales well
+- **Database Migration**: Table prefixes enable clean separation
+- **Route Organization**: Namespace scoping supports engine mounting
 
-### Future Refactoring Opportunities
-- **Service Extraction**: Consider microservice extraction for heavy processing
-- **Database Optimization**: Query optimization and indexing strategy
-- **Background Job Scaling**: Enhanced job processing architecture
-- **Integration Resilience**: Improved failure handling and recovery mechanisms 
+### Testing Debt
+- **API Mocking**: Could benefit from more sophisticated VCR patterns
+- **Integration Coverage**: End-to-end testing could be expanded
+- **Performance Testing**: No load testing for background job processing
+
+### Scalability Considerations
+- **Background Job Scaling**: Single queue may need partitioning
+- **Database Growth**: WorkflowRun table could grow large over time
+- **API Rate Limiting**: External service rate limits not yet handled
+- **Error Recovery**: Manual intervention needed for some failure scenarios
+
+---
+
+## 🎯 Key Design Decisions
+
+1. **Gem-Ready Architecture**: All code namespaced for future extraction
+2. **Service Layer Composition**: Modular services over monolithic controllers
+3. **Result Pattern**: Consistent error handling across all operations
+4. **Background Processing**: Async workflows with comprehensive retry logic
+5. **Configuration Flexibility**: Environment defaults with programmatic overrides
+6. **Clean Database Design**: Prefixed tables and namespaced models
+7. **Integration Abstractions**: Service clients isolate external dependencies
+
+This architecture supports the current Slack-to-Notion workflow while maintaining flexibility for future enhancements and potential gem extraction. 

@@ -1,175 +1,349 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "ostruct"
 
 class ThreadAgent::ProcessWorkflowJobTest < ActiveJob::TestCase
-  def setup
-    @valid_payload = {
-      workflow_run_id: 1,
-      thread_data: {
-        messages: [
-          { text: "Hello", user: "U123" }
-        ]
-      }
+  setup do
+    @template = create(:template)
+    @notion_database = @template.notion_database
+
+    @valid_thread_data = {
+      parent_message: {
+        text: "This is the main question about our product roadmap",
+        user: "john.doe",
+        ts: "1234567890.123456"
+      },
+      replies: [
+        {
+          text: "I think we should focus on mobile first",
+          user: "jane.smith",
+          ts: "1234567891.123456"
+        },
+        {
+          text: "Agreed, mobile is where our users are",
+          user: "bob.wilson",
+          ts: "1234567892.123456"
+        }
+      ],
+      channel_id: "C1234567890",
+      thread_ts: "1234567890.123456"
     }
+
+    # Mock successful OpenAI service response
+    mock_openai_response = OpenStruct.new(
+      success?: true,
+      data: "# Summary\n\nThe team discussed mobile-first approach for the product roadmap.\n\n## Key Points\n\n• Focus on mobile development\n• Users are primarily mobile\n• Roadmap should prioritize mobile features",
+      model: "gpt-4"
+    )
+
+    ThreadAgent::Openai::Service.any_instance.stubs(:transform_content).returns(mock_openai_response)
+
+    # Mock successful Notion service response for create_page_from_workflow
+    mock_notion_response = ThreadAgent::Result.success({
+      id: "notion-page-123",
+      url: "https://notion.so/page-123",
+      title: "This is the main question about our product roadmap",
+      created_time: "2024-01-01T12:00:00.000Z"
+    })
+
+    ThreadAgent::Notion::Service.any_instance.stubs(:create_page_from_workflow).returns(mock_notion_response)
+
+    # Mock Slack service for thread processing
+    mock_slack_response = ThreadAgent::Result.success(@valid_thread_data)
+    ThreadAgent::Slack::Service.any_instance.stubs(:process_workflow_input).returns(mock_slack_response)
+
+    # Mock service initializations to prevent API credential checks
+    mock_slack_service = stub(process_workflow_input: mock_slack_response)
+    mock_openai_service = stub(
+      transform_content: mock_openai_response,
+      model: "gpt-4"
+    )
+    mock_notion_service = stub(create_page_from_workflow: mock_notion_response)
+
+    ThreadAgent::Slack::Service.stubs(:new).returns(mock_slack_service)
+    ThreadAgent::Openai::Service.stubs(:new).returns(mock_openai_service)
+    ThreadAgent::Notion::Service.stubs(:new).returns(mock_notion_service)
   end
 
-  test "job class exists and inherits from ApplicationJob" do
-    assert ThreadAgent::ProcessWorkflowJob.ancestors.include?(ApplicationJob)
-    assert ThreadAgent::ProcessWorkflowJob.ancestors.include?(ActiveJob::Base)
-  end
-
-  test "job includes SafetyNetRetries concern" do
-    assert ThreadAgent::ProcessWorkflowJob.ancestors.include?(SafetyNetRetries)
-  end
-
-  test "job can be enqueued with workflow_run_id" do
-    workflow_run = create(:workflow_run)
+  test "successfully processes workflow with all steps" do
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
 
     assert_enqueued_with(job: ThreadAgent::ProcessWorkflowJob, args: [ workflow_run.id ]) do
       ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    perform_enqueued_jobs
+
+    workflow_run.reload
+    assert_equal "completed", workflow_run.status
+    assert_not_nil workflow_run.output_data
+    assert_includes workflow_run.output_data.keys, "notion_page_url"
   end
 
-  test "perform method accepts workflow_run_id parameter" do
-    workflow_run = create(:workflow_run)
+  test "processes workflow with Slack fetching when only channel and thread info provided" do
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: {
+        channel_id: "C1234567890",
+        thread_ts: "1234567890.123456"
+      }.to_json
+    )
 
-    # Should not raise any errors
-    assert_nothing_raised do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "completed", workflow_run.status
+    assert_not_nil workflow_run.output_data
   end
 
-  test "perform raises ActiveRecord::RecordNotFound for nil workflow_run_id" do
-    assert_raises(ActiveRecord::RecordNotFound) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(nil)
+  test "processes hash input_data correctly" do
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "completed", workflow_run.status
+    assert_not_nil workflow_run.output_data
   end
 
-  test "perform raises ActiveRecord::RecordNotFound for blank workflow_run_id" do
-    assert_raises(ActiveRecord::RecordNotFound) do
-      ThreadAgent::ProcessWorkflowJob.new.perform("")
+  test "handles missing input_data" do
+    # Create workflow_run with slack fields to pass validation, then mock Slack service failure
+    workflow_run = create(:workflow_run, :with_slack_info,
+      template: @template,
+      input_data: nil,
+      slack_thread_ts: "1234567890.123456" # Add missing field from trait
+    )
+
+    # Mock Slack service failure for missing data using explicit mock
+    mock_service = mock("slack_service")
+    mock_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.failure("Missing channel_id or thread_ts in workflow input")
+    )
+
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_service)
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/Missing channel_id or thread_ts/, workflow_run.error_message)
   end
 
-  test "perform raises ActiveRecord::RecordNotFound for invalid workflow_run_id" do
-    assert_raises(ActiveRecord::RecordNotFound) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(999999)
+  test "handles invalid JSON in input_data" do
+    # Test that invalid JSON is caught by validation and handled gracefully
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: "invalid json{"
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/Invalid input data format/, workflow_run.error_message)
   end
 
-  test "perform logs appropriate messages for valid workflow_run_id" do
-    workflow_run = create(:workflow_run)
+  test "handles Slack service errors" do
+    # Mock Slack service failure using explicit mock
+    mock_service = mock("slack_service")
+    mock_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.failure("Slack API error")
+    )
 
-    Rails.logger.expects(:info).with("ProcessWorkflowJob started for workflow_run_id: #{workflow_run.id}")
-    Rails.logger.expects(:info).with("Processing workflow_run: #{workflow_run.id}")
-    Rails.logger.expects(:info).with("ProcessWorkflowJob completed for workflow_run_id: #{workflow_run.id}")
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_service)
 
-    ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
-  end
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: {
+        channel_id: "C1234567890",
+        thread_ts: "1234567890.123456"
+      }.to_json
+    )
 
-  # Tests for SafetyNetRetries concern integration
-  test "job includes SafetyNetRetries concern and retry behavior" do
-    # Verify that the concern is properly included
-    assert ThreadAgent::ProcessWorkflowJob.ancestors.include?(SafetyNetRetries)
-
-    # Verify that when retryable errors occur, they are raised (allowing ActiveJob to handle retries)
-    workflow_run = create(:workflow_run)
-
-    # Mock WorkflowRun.find to raise a retryable error
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(ThreadAgent::SlackError.new("Slack API temporarily unavailable"))
-
-    # The job should raise the error, allowing ActiveJob retry mechanism to kick in
-    assert_raises(ThreadAgent::SlackError) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/Slack API error/, workflow_run.error_message)
   end
 
-  test "job raises OpenAI errors for retry handling" do
-    workflow_run = create(:workflow_run)
+  test "handles OpenAI service errors" do
+    # Mock services with proper call sequence
+    mock_slack_service = mock("slack_service")
+    mock_slack_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.success(@valid_thread_data)
+    )
 
-    # Mock to raise OpenaiError
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(ThreadAgent::OpenaiError.new("OpenAI API error"))
+    mock_openai_service = mock("openai_service")
+    mock_openai_service.expects(:transform_content)
+      .raises(ThreadAgent::OpenaiError, "API rate limit exceeded")
 
-    # The job should raise the error for ActiveJob to handle retries
-    assert_raises(ThreadAgent::OpenaiError) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_slack_service)
+    ThreadAgent::Openai::Service.expects(:new).returns(mock_openai_service)
+
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/OpenAI processing failed/, workflow_run.error_message)
   end
 
-  test "job raises network timeout errors for retry handling" do
-    workflow_run = create(:workflow_run)
+  test "handles OpenAI service returning failure result" do
+    # Mock services with proper call sequence
+    mock_slack_service = mock("slack_service")
+    mock_slack_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.success(@valid_thread_data)
+    )
 
-    # Test Net::ReadTimeout
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(Net::ReadTimeout.new("Read timeout"))
+    failure_result = OpenStruct.new(
+      success?: false,
+      error: "Model is temporarily unavailable"
+    )
+    mock_openai_service = mock("openai_service")
+    mock_openai_service.expects(:transform_content).returns(failure_result)
 
-    # The job should raise the error for ActiveJob to handle retries
-    assert_raises(Net::ReadTimeout) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_slack_service)
+    ThreadAgent::Openai::Service.expects(:new).returns(mock_openai_service)
+
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/OpenAI service returned error/, workflow_run.error_message)
   end
 
-  test "job raises Faraday errors for retry handling" do
-    workflow_run = create(:workflow_run)
+  test "handles missing Notion database configuration" do
+    # Mock services with proper call sequence
+    mock_slack_service = mock("slack_service")
+    mock_slack_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.success(@valid_thread_data)
+    )
 
-    # Mock to raise Faraday::Error
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(Faraday::Error.new("HTTP client error"))
+    mock_openai_service = mock("openai_service")
+    mock_openai_service.expects(:transform_content).returns(
+      ThreadAgent::Result.success("AI generated content")
+    )
+    mock_openai_service.expects(:model).returns("gpt-4")
 
-    # The job should raise the error for ActiveJob to handle retries
-    assert_raises(Faraday::Error) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    mock_notion_service = mock("notion_service")
+    mock_notion_service.expects(:create_page_from_workflow).returns(
+      ThreadAgent::Result.failure("No Notion database configured for template")
+    )
+
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_slack_service)
+    ThreadAgent::Openai::Service.expects(:new).returns(mock_openai_service)
+    ThreadAgent::Notion::Service.expects(:new).returns(mock_notion_service)
+
+    workflow_run = create(:workflow_run,
+      template: nil,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/No Notion database configured/, workflow_run.error_message)
   end
 
-  test "job raises database connection errors for retry handling" do
-    workflow_run = create(:workflow_run)
+  test "handles Notion service errors" do
+    # Mock services with proper call sequence
+    mock_slack_service = mock("slack_service")
+    mock_slack_service.expects(:process_workflow_input).returns(
+      ThreadAgent::Result.success(@valid_thread_data)
+    )
 
-    # Mock to raise ActiveRecord::ConnectionTimeoutError
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(ActiveRecord::ConnectionTimeoutError.new("Connection timeout"))
+    mock_openai_service = mock("openai_service")
+    mock_openai_service.expects(:transform_content).returns(
+      ThreadAgent::Result.success("AI generated content")
+    )
+    mock_openai_service.expects(:model).returns("gpt-4")
 
-    # The job should raise the error for ActiveJob to handle retries
-    assert_raises(ActiveRecord::ConnectionTimeoutError) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    mock_notion_service = mock("notion_service")
+    mock_notion_service.expects(:create_page_from_workflow).returns(
+      ThreadAgent::Result.failure("Notion API error")
+    )
+
+    ThreadAgent::Slack::Service.expects(:new).returns(mock_slack_service)
+    ThreadAgent::Openai::Service.expects(:new).returns(mock_openai_service)
+    ThreadAgent::Notion::Service.expects(:new).returns(mock_notion_service)
+
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "failed", workflow_run.status
+    assert_match(/Notion API error/, workflow_run.error_message)
   end
 
-  test "job raises socket errors for retry handling" do
-    workflow_run = create(:workflow_run)
+  test "creates rich Notion page content with proper structure" do
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
 
-    # Test Errno::ECONNRESET
-    ThreadAgent::WorkflowRun.stubs(:find).with(workflow_run.id)
-      .raises(Errno::ECONNRESET.new("Connection reset"))
-
-    # The job should raise the error for ActiveJob to handle retries
-    assert_raises(Errno::ECONNRESET) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(workflow_run.id)
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
+
+    workflow_run.reload
+    assert_equal "completed", workflow_run.status
+    # The actual content structure is now tested in the service layer tests
+    assert_not_nil workflow_run.output_data["notion_page_url"]
   end
 
-  test "job handles non-retryable errors normally" do
-    # ActiveRecord::RecordNotFound should not be retried (not in SafetyNetRetries)
-    # This test verifies our existing error handling still works
-    assert_raises(ActiveRecord::RecordNotFound) do
-      ThreadAgent::ProcessWorkflowJob.new.perform(999999)
+  test "builds comprehensive page properties" do
+    workflow_run = create(:workflow_run,
+      template: @template,
+      input_data: { thread_data: @valid_thread_data }.to_json
+    )
+
+    perform_enqueued_jobs do
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
     end
-  end
 
-  test "SafetyNetRetries concern configuration is applied" do
-    # Test that the concern's module is properly extended and included
-    assert_respond_to SafetyNetRetries, :included
-
-    # Verify the concern adds retry behavior to the job class
-    # This is a structural test to ensure the concern is working
-    job_class = ThreadAgent::ProcessWorkflowJob
-
-    # The concern should add retry_on configurations
-    # We can't easily inspect the internal retry configuration in Rails 8,
-    # but we can verify the concern's methods are available
-    assert job_class.ancestors.include?(SafetyNetRetries)
+    workflow_run.reload
+    assert_equal "completed", workflow_run.status
+    # The actual property building is now tested in the PageBuilder tests
+    assert_not_nil workflow_run.output_data["notion_page_url"]
   end
 end

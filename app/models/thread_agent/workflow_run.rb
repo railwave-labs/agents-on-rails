@@ -6,6 +6,9 @@ module ThreadAgent
 
     belongs_to :template, optional: true
 
+    serialize :output_data, coder: JSON
+    serialize :input_data, coder: JSON
+
     enum :status, {
       pending: "pending",
       running: "running",
