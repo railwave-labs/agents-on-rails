@@ -49,14 +49,15 @@ module ThreadAgent
       # @param template [Template, nil] Optional template for custom system prompt
       # @param thread_data [Hash] Slack thread data with parent_message, replies, etc.
       # @param custom_prompt [String, nil] Optional custom prompt from user input
-      # @return [String] Transformed content from OpenAI
+      # @return [ThreadAgent::Result] Result object with success/failure and data
       def transform_content(template: nil, thread_data:, custom_prompt: nil)
         validate_transform_inputs!(thread_data)
 
         messages = build_messages(template: template, thread_data: thread_data, custom_prompt: custom_prompt)
         response = make_openai_request(messages)
 
-        extract_content_from_response(response)
+        content = extract_content_from_response(response)
+        ThreadAgent::Result.success(content)
       rescue StandardError => e
         handle_transformation_error(e)
       end
@@ -98,9 +99,9 @@ module ThreadAgent
       def handle_transformation_error(error)
         case error
         when ThreadAgent::OpenaiError
-          raise error
+          ThreadAgent::Result.failure(error.message)
         else
-          raise ThreadAgent::OpenaiError, "Content transformation failed: #{error.message}"
+          ThreadAgent::Result.failure("Content transformation failed: #{error.message}")
         end
       end
     end

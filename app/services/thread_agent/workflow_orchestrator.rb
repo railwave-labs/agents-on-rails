@@ -55,6 +55,7 @@ module ThreadAgent
       workflow_run.mark_completed!({
         slack_thread_data: thread_data,
         openai_content: openai_result.data[:content],
+        ai_model_used: openai_result.data[:model],
         notion_page_url: notion_result.data[:url],
         notion_page_id: notion_result.data[:id]
       })
