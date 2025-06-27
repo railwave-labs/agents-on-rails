@@ -2,11 +2,11 @@ require "test_helper"
 
 class ThreadAgent::WebhooksControllerTest < ActionDispatch::IntegrationTest
   def setup
-    ENV["SLACK_SIGNING_SECRET"] = "test-secret"
+    ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-secret"
   end
 
   def teardown
-    ENV.delete("SLACK_SIGNING_SECRET")
+    ENV.delete("THREAD_AGENT_SLACK_SIGNING_SECRET")
   end
 
   def valid_headers(timestamp, body)

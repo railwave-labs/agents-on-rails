@@ -7,7 +7,7 @@ class ThreadAgent::WebhooksController < ApplicationController
     handler = ThreadAgent::Slack::WebhookRequestHandler.new(
       request,
       params,
-      ENV["SLACK_SIGNING_SECRET"]
+      ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"]
     )
 
     result = handler.process

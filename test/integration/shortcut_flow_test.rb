@@ -4,7 +4,7 @@ require "test_helper"
 
 class ShortcutFlowTest < ActionDispatch::IntegrationTest
   def setup
-    ENV["SLACK_SIGNING_SECRET"] = "test-secret"
+    ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-secret"
     ENV["THREAD_AGENT_SLACK_BOT_TOKEN"] = "xoxb-test-token"
     ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-secret"
     ThreadAgent.reset_configuration!
@@ -18,7 +18,7 @@ class ShortcutFlowTest < ActionDispatch::IntegrationTest
   end
 
   def teardown
-    ENV.delete("SLACK_SIGNING_SECRET")
+    ENV.delete("THREAD_AGENT_SLACK_SIGNING_SECRET")
     ENV.delete("THREAD_AGENT_SLACK_BOT_TOKEN")
     ENV.delete("THREAD_AGENT_SLACK_SIGNING_SECRET")
     WebMock.reset!
