@@ -3,7 +3,7 @@
 module ThreadAgent
   module Openai
     class MessageBuilder
-      DEFAULT_SYSTEM_PROMPT = "You are an expert assistant. Summarize the following Slack thread, highlighting key decisions, action items, and main discussion points. Use bullet points for clarity. Exclude greetings and unrelated chatter."
+      DEFAULT_SYSTEM_PROMPT = "You are an expert assistant. Summarize the following Slack thread, highlighting key decisions, action items, and main discussion points. Use bullet points for clarity. Exclude greetings and unrelated chatter. If provided, use the template to structure your response."
 
       # Build messages array for OpenAI API
       # @param template [Template, nil] Optional template for custom system prompt
@@ -35,10 +35,17 @@ module ThreadAgent
       # @param custom_prompt [String, nil] Optional custom prompt
       # @return [String] System prompt to use
       def self.determine_system_prompt(template, custom_prompt)
-        return custom_prompt if custom_prompt.present?
-        return template.content if template&.respond_to?(:content) && template.content.present?
+        prompt_parts = [ DEFAULT_SYSTEM_PROMPT ]
 
-        DEFAULT_SYSTEM_PROMPT
+        if custom_prompt.present?
+          prompt_parts << "\n<custom prompt>\n#{custom_prompt}\n</custom prompt>"
+        end
+
+        if template&.respond_to?(:content) && template.content.present?
+          prompt_parts << "\n<template>\n#{template.content}\n</template>"
+        end
+
+        prompt_parts.join("\n")
       end
 
       # Build user content from thread data

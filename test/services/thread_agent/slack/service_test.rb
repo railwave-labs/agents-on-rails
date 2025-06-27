@@ -784,7 +784,7 @@ module ThreadAgent
 
           slack_response = { "ok" => true, "view" => { "id" => "V123456789" } }
           expected_result = ThreadAgent::Result.success(slack_response)
-          mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, []).returns(expected_result)
+          mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, [], {}).returns(expected_result)
 
           result = @service.create_modal(@trigger_id, @workspaces, [])
 
@@ -798,7 +798,7 @@ module ThreadAgent
           @service.stubs(:shortcut_handler).returns(mock_handler)
 
           error_result = ThreadAgent::Result.failure("Slack API error after 0 retries: invalid_auth")
-          mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, []).returns(error_result)
+          mock_handler.expects(:create_modal).with(@trigger_id, @workspaces, [], {}).returns(error_result)
 
           result = @service.create_modal(@trigger_id, @workspaces, [])
 

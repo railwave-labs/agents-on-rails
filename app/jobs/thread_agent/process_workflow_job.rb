@@ -14,8 +14,8 @@ module ThreadAgent
       workflow_run = load_workflow_run(workflow_run_id)
       log_with_context("Processing workflow_run", step: "workflow_loaded", workflow_name: workflow_run.workflow_name)
 
-      result = execute_workflow_with_instrumentation(workflow_run, workflow_run_id)
-      handle_workflow_result(result, workflow_run_id)
+      result = execute_workflow_with_instrumentation(workflow_run)
+      handle_workflow_result(result, workflow_run.id)
 
       log_with_context("ProcessWorkflowJob completed", step: "job_completed")
 
@@ -35,9 +35,9 @@ module ThreadAgent
       ThreadAgent::WorkflowRun.find(workflow_run_id)
     end
 
-    def execute_workflow_with_instrumentation(workflow_run, workflow_run_id)
+    def execute_workflow_with_instrumentation(workflow_run)
       # Send instrumentation event and delegate to orchestrator
-      ActiveSupport::Notifications.instrument("thread_agent.workflow.process", workflow_run_id: workflow_run_id) do
+      ActiveSupport::Notifications.instrument("thread_agent.workflow.process", workflow_run_id: workflow_run.id) do
         ThreadAgent::WorkflowOrchestrator.execute_workflow(workflow_run)
       end
     end

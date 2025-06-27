@@ -53,7 +53,8 @@ module ThreadAgent
       def transform_content(template: nil, thread_data:, custom_prompt: nil)
         validate_transform_inputs!(thread_data)
 
-        messages = build_messages(template: template, thread_data: thread_data, custom_prompt: custom_prompt)
+        messages = build_messages(template:, thread_data:, custom_prompt:)
+
         response = make_openai_request(messages)
 
         content = extract_content_from_response(response)

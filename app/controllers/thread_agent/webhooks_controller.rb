@@ -23,7 +23,7 @@ class ThreadAgent::WebhooksController < ApplicationController
     case @payload["type"]
     when "url_verification"
       render json: { challenge: @payload["challenge"] }
-    when "shortcut"
+    when "shortcut", "message_action"
       handle_shortcut
     when "event_callback"
       handle_event
@@ -66,8 +66,11 @@ class ThreadAgent::WebhooksController < ApplicationController
     result = service.handle_modal_submission(@payload)
 
     if result.success?
-      # Queue the workflow processing job
-      ThreadAgent::ProcessWorkflowJob.perform_later(@payload)
+      # Extract the workflow_run_id from the service result
+      workflow_run_id = result.data[:workflow_run_id]
+
+      # Queue the workflow processing job with the correct workflow_run_id
+      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run_id)
 
       # Respond with empty JSON per Slack spec
       render json: {}, status: :ok
