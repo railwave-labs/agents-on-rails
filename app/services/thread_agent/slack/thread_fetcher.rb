@@ -28,7 +28,17 @@ module ThreadAgent
             ).messages.first
           end
 
-          return ThreadAgent::Result.failure("Parent message not found") unless parent_message
+          unless parent_message
+            error = ThreadAgent::ValidationError.new(
+              "Parent message not found",
+              context: {
+                component: "thread_fetching",
+                channel_id: channel_id,
+                thread_ts: thread_ts
+              }
+            )
+            return ThreadAgent::ErrorHandler.to_result(error, service: "slack")
+          end
 
           # Get replies in the thread
           replies = retry_handler.retry_with do
@@ -40,18 +50,38 @@ module ThreadAgent
 
           formatted_data = MessageFormatter.format_thread_data(parent_message, replies)
           ThreadAgent::Result.success(formatted_data)
-        rescue ThreadAgent::SlackError => e
-          ThreadAgent::Result.failure(e.message)
+        rescue ThreadAgent::Error => e
+          # Already a standardized error, just convert to result
+          ThreadAgent::ErrorHandler.to_result(e, service: "slack")
         rescue StandardError => e
-          ThreadAgent::Result.failure("Unexpected error: #{e.message}")
+          ThreadAgent::ErrorHandler.to_result(
+            e,
+            context: {
+              component: "thread_fetching",
+              channel_id: channel_id,
+              thread_ts: thread_ts
+            },
+            service: "slack"
+          )
         end
       end
 
       private
 
       def validate_thread_params!(channel_id, thread_ts)
-        raise ThreadAgent::SlackError, "Missing channel_id" if channel_id.blank?
-        raise ThreadAgent::SlackError, "Missing thread_ts" if thread_ts.blank?
+        if channel_id.blank?
+          raise ThreadAgent::ValidationError.new(
+            "Missing channel_id",
+            context: { component: "thread_fetching", thread_ts: thread_ts }
+          )
+        end
+
+        if thread_ts.blank?
+          raise ThreadAgent::ValidationError.new(
+            "Missing thread_ts",
+            context: { component: "thread_fetching", channel_id: channel_id }
+          )
+        end
       end
     end
   end

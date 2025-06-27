@@ -49,16 +49,29 @@ module ThreadAgent
       # @param template [Template, nil] Optional template for custom system prompt
       # @param thread_data [Hash] Slack thread data with parent_message, replies, etc.
       # @param custom_prompt [String, nil] Optional custom prompt from user input
-      # @return [String] Transformed content from OpenAI
+      # @return [ThreadAgent::Result] Result object with success/failure and data
       def transform_content(template: nil, thread_data:, custom_prompt: nil)
         validate_transform_inputs!(thread_data)
 
         messages = build_messages(template: template, thread_data: thread_data, custom_prompt: custom_prompt)
         response = make_openai_request(messages)
 
-        extract_content_from_response(response)
+        content = extract_content_from_response(response)
+        ThreadAgent::Result.success(content)
+      rescue ThreadAgent::Error => e
+        # Already a standardized error, just convert to result
+        ThreadAgent::ErrorHandler.to_result(e, service: "openai")
       rescue StandardError => e
-        handle_transformation_error(e)
+        ThreadAgent::ErrorHandler.to_result(
+          e,
+          context: {
+            component: "content_transformation",
+            model: model,
+            template_present: !template.nil?,
+            custom_prompt_present: !custom_prompt.nil?
+          },
+          service: "openai"
+        )
       end
 
       private
@@ -66,7 +79,14 @@ module ThreadAgent
       # Content transformation helper methods
       def validate_transform_inputs!(thread_data)
         unless thread_data.is_a?(Hash) && thread_data.key?(:parent_message)
-          raise ThreadAgent::OpenaiError, "Invalid thread_data: must be a hash with parent_message"
+          raise ThreadAgent::ValidationError.new(
+            "Invalid thread_data: must be a hash with parent_message",
+            context: {
+              component: "input_validation",
+              thread_data_type: thread_data.class.name,
+              thread_data_keys: thread_data.is_a?(Hash) ? thread_data.keys : nil
+            }
+          )
         end
       end
 
@@ -82,26 +102,34 @@ module ThreadAgent
           )
         end
       rescue StandardError => e
-        raise ThreadAgent::OpenaiError, "OpenAI API request failed: #{e.message}"
+        error = ThreadAgent::ErrorHandler.standardize_error(
+          e,
+          context: {
+            component: "openai_api_request",
+            model: model,
+            message_count: messages&.length
+          },
+          service: "openai"
+        )
+        raise error
       end
 
       def extract_content_from_response(response)
         content = response.dig("choices", 0, "message", "content")
 
         unless content.present?
-          raise ThreadAgent::OpenaiError, "Invalid response from OpenAI: missing content"
+          raise ThreadAgent::ValidationError.new(
+            "Invalid response from OpenAI: missing content",
+            context: {
+              component: "response_extraction",
+              response_structure: response.keys,
+              choices_present: response.key?("choices"),
+              choices_count: response["choices"]&.length
+            }
+          )
         end
 
         content.strip
-      end
-
-      def handle_transformation_error(error)
-        case error
-        when ThreadAgent::OpenaiError
-          raise error
-        else
-          raise ThreadAgent::OpenaiError, "Content transformation failed: #{error.message}"
-        end
       end
     end
   end

@@ -25,16 +25,27 @@ module ThreadAgent
           request_timeout: timeout
         )
       rescue StandardError => e
-        raise ThreadAgent::OpenaiError, "Failed to initialize OpenAI client: #{e.message}"
+        error = ThreadAgent::ErrorHandler.standardize_error(
+          e,
+          context: { component: "openai_client_initialization", model: model, timeout: timeout },
+          service: "openai"
+        )
+        raise error
       end
 
       def validate_configuration!
         unless api_key.present?
-          raise ThreadAgent::OpenaiError, "Missing OpenAI API key"
+          raise ThreadAgent::OpenaiAuthError.new(
+            "Missing OpenAI API key",
+            context: { component: "openai_client_validation", model: model }
+          )
         end
 
         unless model.present?
-          raise ThreadAgent::OpenaiError, "Missing OpenAI model configuration"
+          raise ThreadAgent::ConfigurationError.new(
+            "Missing OpenAI model configuration",
+            context: { component: "openai_client_validation", api_key_present: api_key.present? }
+          )
         end
       end
     end

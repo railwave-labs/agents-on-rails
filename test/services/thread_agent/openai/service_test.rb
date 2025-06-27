@@ -60,15 +60,15 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     assert_equal "Missing OpenAI API key", error.message
   end
 
-  test "raises OpenaiError when model missing" do
-    error = assert_raises(ThreadAgent::OpenaiError) do
+  test "raises ConfigurationError when model missing" do
+    error = assert_raises(ThreadAgent::ConfigurationError) do
       ThreadAgent::Openai::Service.new(api_key: "test-key", model: "")
     end
 
     assert_equal "Missing OpenAI model configuration", error.message
   end
 
-  test "raises OpenaiError when client initialization fails" do
+  test "raises Error when client initialization fails" do
     OpenAI::Client.expects(:new).raises(StandardError.new("Network error"))
 
     service = ThreadAgent::Openai::Service.new(
@@ -76,11 +76,11 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
       model: "gpt-4"
     )
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
+    error = assert_raises(ThreadAgent::Error) do
       service.client
     end
 
-    assert_includes error.message, "Failed to initialize OpenAI client"
+    assert_includes error.message, "Unexpected error: Network error"
   end
 
   test "initializes OpenAI client with correct parameters" do
@@ -135,7 +135,8 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     service = create_service_with_mock_client(mock_response)
 
     result = service.transform_content(template: template, thread_data: thread_data)
-    assert_equal "Template-based summary", result
+    assert result.success?
+    assert_equal "Template-based summary", result.data
   end
 
   test "transform_content with custom_prompt uses custom prompt as system prompt" do
@@ -150,7 +151,8 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
       thread_data: thread_data,
       custom_prompt: "Custom user instructions"
     )
-    assert_equal "Custom prompt summary", result
+    assert result.success?
+    assert_equal "Custom prompt summary", result.data
   end
 
   test "transform_content without template or custom_prompt uses default system prompt" do
@@ -160,7 +162,8 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     service = create_service_with_mock_client(mock_response)
 
     result = service.transform_content(thread_data: thread_data)
-    assert_equal "Default summary", result
+    assert result.success?
+    assert_equal "Default summary", result.data
   end
 
   test "transform_content includes slack permalink in user content" do
@@ -170,7 +173,8 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     service = create_service_with_mock_client(mock_response)
 
     result = service.transform_content(thread_data: thread_data)
-    assert_equal "Summary with link", result
+    assert result.success?
+    assert_equal "Summary with link", result.data
   end
 
   test "transform_content handles thread with replies" do
@@ -180,23 +184,23 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     service = create_service_with_mock_client(mock_response)
 
     result = service.transform_content(thread_data: thread_data)
-    assert_equal "Summary with replies", result
+    assert result.success?
+    assert_equal "Summary with replies", result.data
   end
 
-  test "transform_content raises OpenaiError for invalid thread_data" do
+  test "transform_content returns failure for invalid thread_data" do
     service = ThreadAgent::Openai::Service.new(
       api_key: "test-key",
       model: "gpt-4"
     )
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
-      service.transform_content(thread_data: { invalid: "data" })
-    end
+    result = service.transform_content(thread_data: { invalid: "data" })
 
-    assert_equal "Invalid thread_data: must be a hash with parent_message", error.message
+    assert result.failure?
+    assert_includes result.error, "Invalid thread_data: must be a hash with parent_message"
   end
 
-  test "transform_content raises OpenaiError when API request fails" do
+  test "transform_content returns failure when API request fails" do
     thread_data = mock_valid_thread_data
 
     service = ThreadAgent::Openai::Service.new(
@@ -208,24 +212,22 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     mock_client.expects(:chat).raises(StandardError.new("API error"))
     service.openai_client.expects(:client).returns(mock_client)
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
-      service.transform_content(thread_data: thread_data)
-    end
+    result = service.transform_content(thread_data: thread_data)
 
-    assert_includes error.message, "OpenAI API request failed"
+    assert result.failure?
+    assert_includes result.error, "API error"
   end
 
-  test "transform_content raises OpenaiError when response missing content" do
+  test "transform_content returns failure when response missing content" do
     thread_data = mock_valid_thread_data
     mock_response = { "choices" => [ { "message" => {} } ] }
 
     service = create_service_with_mock_client(mock_response)
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
-      service.transform_content(thread_data: thread_data)
-    end
+    result = service.transform_content(thread_data: thread_data)
 
-    assert_equal "Invalid response from OpenAI: missing content", error.message
+    assert result.failure?
+    assert_includes result.error, "Invalid response from OpenAI: missing content"
   end
 
   test "transform_content handles other errors gracefully" do
@@ -238,11 +240,10 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
 
     service.expects(:validate_transform_inputs!).raises(ArgumentError.new("Some error"))
 
-    error = assert_raises(ThreadAgent::OpenaiError) do
-      service.transform_content(thread_data: thread_data)
-    end
+    result = service.transform_content(thread_data: thread_data)
 
-    assert_includes error.message, "Content transformation failed"
+    assert result.failure?
+    assert_includes result.error, "Some error"
   end
 
   test "transform_content makes correct API request" do
@@ -269,7 +270,8 @@ class ThreadAgent::Openai::ServiceTest < ActiveSupport::TestCase
     service.openai_client.expects(:client).returns(mock_client)
 
     result = service.transform_content(thread_data: thread_data)
-    assert_equal "API test summary", result
+    assert result.success?
+    assert_equal "API test summary", result.data
   end
 
   private

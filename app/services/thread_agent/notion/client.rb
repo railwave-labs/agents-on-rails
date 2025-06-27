@@ -24,12 +24,20 @@ module ThreadAgent
           timeout: timeout
         )
       rescue StandardError => e
-        raise ThreadAgent::NotionError, "Failed to initialize Notion client: #{e.message}"
+        error = ThreadAgent::ErrorHandler.standardize_error(
+          e,
+          context: { component: "notion_client_initialization", timeout: timeout },
+          service: "notion"
+        )
+        raise error
       end
 
       def validate_configuration!
         unless token.present?
-          raise ThreadAgent::NotionError, "Missing Notion API token"
+          raise ThreadAgent::NotionAuthError.new(
+            "Missing Notion API token",
+            context: { component: "notion_client_validation", timeout: timeout }
+          )
         end
       end
     end
