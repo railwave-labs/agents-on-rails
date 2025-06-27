@@ -33,7 +33,7 @@ class ThreadAgent::Slack::ModalBuilderTest < ActiveSupport::TestCase
       assert_equal "modal", modal[:type]
       assert_equal "thread_capture_modal", modal[:callback_id]
       assert modal[:blocks].is_a?(Array)
-      assert_equal 3, modal[:blocks].length # Section, divider, workspace only
+      assert_equal 4, modal[:blocks].length # Section, divider, workspace, custom prompt
 
       # Check that workspace block is present
       workspace_block = modal[:blocks].find { |block| block[:block_id] == "workspace_block" }
@@ -42,13 +42,17 @@ class ThreadAgent::Slack::ModalBuilderTest < ActiveSupport::TestCase
       # Check that template block is not present
       template_block = modal[:blocks].find { |block| block[:block_id] == "template_block" }
       assert_nil template_block
+
+      # Check that custom prompt block is present
+      custom_prompt_block = modal[:blocks].find { |block| block[:block_id] == "custom_prompt_block" }
+      assert_not_nil custom_prompt_block
     end
 
     test "builds modal with nil templates" do
       modal = ThreadAgent::Slack::ModalBuilder.build_thread_capture_modal(@workspaces, nil)
 
       assert_equal "modal", modal[:type]
-      assert_equal 3, modal[:blocks].length # Section, divider, workspace only
+      assert_equal 4, modal[:blocks].length # Section, divider, workspace, custom prompt
     end
 
     test "handles workspaces with string keys" do
@@ -229,6 +233,38 @@ class ThreadAgent::Slack::ModalBuilderTest < ActiveSupport::TestCase
 
       template_block = modal[:blocks].find { |block| block[:block_id] == "template_block" }
       assert_nil template_block
+    end
+  end
+
+  class CustomPromptInputTest < ThreadAgent::Slack::ModalBuilderTest
+    test "custom prompt block has correct structure" do
+      modal = ThreadAgent::Slack::ModalBuilder.build_thread_capture_modal(@workspaces, @templates)
+
+      custom_prompt_block = modal[:blocks].find { |block| block[:block_id] == "custom_prompt_block" }
+      assert_not_nil custom_prompt_block
+
+      assert_equal "input", custom_prompt_block[:type]
+      assert_equal "custom_prompt_block", custom_prompt_block[:block_id]
+      assert_equal true, custom_prompt_block[:optional]
+      assert_equal "Custom Prompt (Optional)", custom_prompt_block[:label][:text]
+
+      element = custom_prompt_block[:element]
+      assert_equal "plain_text_input", element[:type]
+      assert_equal true, element[:multiline]
+      assert_equal "custom_prompt_input", element[:action_id]
+      assert_includes element[:placeholder][:text], "Optional: Add custom instructions"
+    end
+
+    test "custom prompt block is always present" do
+      # With templates
+      modal_with_templates = ThreadAgent::Slack::ModalBuilder.build_thread_capture_modal(@workspaces, @templates)
+      custom_prompt_block = modal_with_templates[:blocks].find { |block| block[:block_id] == "custom_prompt_block" }
+      assert_not_nil custom_prompt_block
+
+      # Without templates
+      modal_without_templates = ThreadAgent::Slack::ModalBuilder.build_thread_capture_modal(@workspaces, [])
+      custom_prompt_block = modal_without_templates[:blocks].find { |block| block[:block_id] == "custom_prompt_block" }
+      assert_not_nil custom_prompt_block
     end
   end
 

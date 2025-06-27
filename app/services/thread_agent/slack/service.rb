@@ -113,8 +113,9 @@ module ThreadAgent
     # Extract workspace and template IDs from the form submission
     workspace_id = state_values.dig("workspace_block", "workspace_select", "selected_option", "value")
     template_id = state_values.dig("template_block", "template_select", "selected_option", "value")
+    custom_prompt = state_values.dig("custom_prompt_block", "custom_prompt_input", "value")
 
-    Rails.logger.info("Extracted values - workspace_id: #{workspace_id}, template_id: #{template_id}")
+    Rails.logger.info("Extracted values - workspace_id: #{workspace_id}, template_id: #{template_id}, custom_prompt: #{custom_prompt.present? ? '[PROVIDED]' : '[NONE]'}")
 
     # Validate required fields
     return ThreadAgent::Result.failure("Workspace selection is required") if workspace_id.blank?
@@ -153,6 +154,7 @@ module ThreadAgent
       thread_ts: slack_thread_ts,
       slack_user_id: slack_user_id,
       slack_team_id: slack_team_id,
+      custom_prompt: custom_prompt,
       original_payload: payload
     }
 

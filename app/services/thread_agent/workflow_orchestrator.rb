@@ -101,11 +101,15 @@ module ThreadAgent
         # Initialize OpenAI service
         openai_service = ThreadAgent::Openai::Service.new
 
+        # Extract custom prompt from input_data if provided
+        custom_prompt = workflow_run.input_data&.dig("custom_prompt") ||
+                       workflow_run.input_data&.dig(:custom_prompt)
+
         # Transform content using the service
         result = openai_service.transform_content(
           template: workflow_run.template,
           thread_data: thread_data,
-          custom_prompt: nil
+          custom_prompt: custom_prompt
         )
 
         if result.success?

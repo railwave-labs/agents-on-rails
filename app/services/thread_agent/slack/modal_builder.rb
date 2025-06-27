@@ -53,6 +53,9 @@ module ThreadAgent
           blocks << build_template_selector(templates)
         end
 
+        # Add custom prompt input field
+        blocks << build_custom_prompt_input
+
         blocks
       end
 
@@ -118,6 +121,29 @@ module ThreadAgent
           label: {
             type: "plain_text",
             text: "Template"
+          }
+        }
+      end
+
+      # Build a custom prompt input block
+      # @return [Hash] Input block with text area for custom prompt
+      def self.build_custom_prompt_input
+        {
+          type: "input",
+          block_id: "custom_prompt_block",
+          optional: true,
+          element: {
+            type: "plain_text_input",
+            multiline: true,
+            placeholder: {
+              type: "plain_text",
+              text: "Optional: Add custom instructions for processing this thread..."
+            },
+            action_id: "custom_prompt_input"
+          },
+          label: {
+            type: "plain_text",
+            text: "Custom Prompt (Optional)"
           }
         }
       end

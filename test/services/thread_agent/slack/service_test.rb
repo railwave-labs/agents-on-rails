@@ -625,8 +625,8 @@ module ThreadAgent
             # Verify blocks structure - should not include template selector
             blocks = args[:view][:blocks]
 
-            # Should have section, divider, and workspace selector only (no template selector)
-            assert_equal 3, blocks.length
+            # Should have section, divider, workspace selector, and custom prompt (no template selector)
+            assert_equal 4, blocks.length
 
             # Should have workspace selector but no template selector
             workspace_block = blocks.find { |b| b[:block_id] == "workspace_block" }
@@ -634,6 +634,10 @@ module ThreadAgent
 
             template_block = blocks.find { |b| b[:block_id] == "template_block" }
             assert_nil template_block
+
+            # Should have custom prompt block
+            custom_prompt_block = blocks.find { |b| b[:block_id] == "custom_prompt_block" }
+            assert_not_nil custom_prompt_block
 
             true
           end.returns(slack_response)
@@ -813,28 +817,39 @@ module ThreadAgent
         end
 
         test "handle_modal_submission processes valid payload successfully" do
+          # Create a template for the test
+          template = create(:template, id: 2, name: "Test Template")
+
           payload = {
             "type" => "view_submission",
             "user" => {
               "id" => "U123456",
               "name" => "testuser"
             },
+            "team" => {
+              "id" => "T123456"
+            },
             "view" => {
               "id" => "V123456",
               "state" => {
                 "values" => {
-                  "workspace_select" => {
-                    "selected_workspace" => {
+                  "workspace_block" => {
+                    "workspace_select" => {
                       "selected_option" => {
-                        "value" => "workspace_123"
+                        "value" => "1"
                       }
                     }
                   },
-                  "template_select" => {
-                    "selected_template" => {
+                  "template_block" => {
+                    "template_select" => {
                       "selected_option" => {
-                        "value" => "template_456"
+                        "value" => "2"
                       }
+                    }
+                  },
+                  "custom_prompt_block" => {
+                    "custom_prompt_input" => {
+                      "value" => "Test custom prompt"
                     }
                   }
                 }
@@ -845,7 +860,11 @@ module ThreadAgent
           result = @service.handle_modal_submission(payload)
 
           assert result.success?
-          assert_equal "Modal submission processed successfully", result.data
+          assert result.data[:workflow_run_id].present?
+
+          # Verify custom prompt is stored in input_data
+          workflow_run = ThreadAgent::WorkflowRun.find(result.data[:workflow_run_id])
+          assert_equal "Test custom prompt", workflow_run.input_data["custom_prompt"]
         end
 
         test "handle_modal_submission rejects invalid payload type" do
@@ -899,12 +918,17 @@ module ThreadAgent
             "user" => {
               "id" => "U123456"
             },
+            "team" => {
+              "id" => "T123456"
+            },
             "view" => {
               "state" => {
                 "values" => {
-                  "some_field" => {
-                    "some_action" => {
-                      "value" => "some_value"
+                  "workspace_block" => {
+                    "workspace_select" => {
+                      "selected_option" => {
+                        "value" => "1"
+                      }
                     }
                   }
                 }
@@ -915,7 +939,7 @@ module ThreadAgent
           result = @service.handle_modal_submission(payload)
 
           assert result.success?
-          assert_equal "Modal submission processed successfully", result.data
+          assert result.data[:workflow_run_id].present?
         end
 
         test "handle_modal_submission handles exceptions gracefully" do

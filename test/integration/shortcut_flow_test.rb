@@ -157,6 +157,11 @@ class ShortcutFlowTest < ActionDispatch::IntegrationTest
               template_select: {
                 selected_option: { value: @template.id.to_s }
               }
+            },
+            custom_prompt_block: {
+              custom_prompt_input: {
+                value: "Please focus on action items and decisions"
+              }
             }
           }
         }
@@ -189,6 +194,7 @@ class ShortcutFlowTest < ActionDispatch::IntegrationTest
     assert_equal "1234567890.123456", input_data["thread_ts"]
     assert_equal "U123456", input_data["slack_user_id"]
     assert_equal "T123456", input_data["slack_team_id"]
+    assert_equal "Please focus on action items and decisions", input_data["custom_prompt"]
 
     # Verify thread_data is included
     assert_not_nil input_data["thread_data"]

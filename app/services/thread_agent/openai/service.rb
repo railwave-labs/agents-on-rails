@@ -97,7 +97,7 @@ module ThreadAgent
             parameters: {
               model: model,
               messages: messages,
-              max_tokens: 1000,
+              max_tokens: 10000,
               temperature: 0.7
             }
           )
