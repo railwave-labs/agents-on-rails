@@ -44,3 +44,6 @@
 
 .DS_Store
 **/.DS_Store
+
+# Ruby LSP local cache (also self-ignored via .ruby-lsp/.gitignore).
+/.ruby-lsp/
