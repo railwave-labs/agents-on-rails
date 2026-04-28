@@ -24,6 +24,8 @@ gem "slack-ruby-client"
 gem "ruby-openai", "~> 8.1"
 # Notion API client [https://github.com/orbit-love/notion-ruby-client]
 gem "notion-ruby-client", "~> 1.2"
+# Official Anthropic SDK [https://github.com/anthropics/anthropic-sdk-ruby]
+gem "anthropic", "~> 1.36"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

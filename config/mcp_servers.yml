@@ -1,0 +1,9 @@
+default:
+  - name: sentry
+    type: url
+    url: <%= ENV["SENTRY_MCP_URL"] %>
+    authorization_token: <%= ENV["SENTRY_MCP_TOKEN"] %>
+  - name: github
+    type: url
+    url: <%= ENV["GITHUB_MCP_URL"] %>
+    authorization_token: <%= ENV["GITHUB_MCP_TOKEN"] %>

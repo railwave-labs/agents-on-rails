@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_dependency "anthropic/api_rate_limit_error"
+
 # Safety net retry configuration for jobs that handle external service calls.
 # These retries kick in when service-level retries are exhausted and provide
 # a last line of defense against transient failures.
@@ -8,10 +10,14 @@ module SafetyNetRetries
 
   included do
     # Slack service errors (after service-level retries fail)
-    retry_on ThreadAgent::SlackError, wait: 30.seconds, attempts: 3
+    retry_on Slack::Error, wait: 30.seconds, attempts: 3
 
     # OpenAI service errors (after service-level retries fail)
-    retry_on ThreadAgent::OpenaiError, wait: 30.seconds, attempts: 3
+    retry_on Openai::Error, wait: 30.seconds, attempts: 3
+
+    # Anthropic service errors (after service-level retries fail)
+    # Anthropic::ApiRateLimitError and Anthropic::AuthError are subclasses of Anthropic::Error
+    retry_on Anthropic::ApiRateLimitError, wait: 30.seconds, attempts: 3
 
     # Generic network/connection errors that might bypass service-level handling
     retry_on Net::ReadTimeout, Net::OpenTimeout, Timeout::Error, wait: 30.seconds, attempts: 3

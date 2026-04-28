@@ -13,7 +13,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
     ENV["THREAD_AGENT_NOTION_TOKEN"] = "notion-test-token"
 
     # Reset ThreadAgent configuration
-    ThreadAgent.reset_configuration!
+    AppConfig.reset_from_env!
 
     # Create test data with proper associations
     @workspace = create(:notion_workspace,
@@ -98,14 +98,14 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
     assert_nil workflow_run.error_message
 
     # Enqueue the job through the public interface
-    assert_enqueued_with(job: ThreadAgent::ProcessWorkflowJob, args: [ workflow_run.id ]) do
-      ThreadAgent::ProcessWorkflowJob.perform_later(workflow_run.id)
+    assert_enqueued_with(job: Agents::ThreadCapture::ProcessJob, args: [ workflow_run.id ]) do
+      Agents::ThreadCapture::ProcessJob.perform_later(workflow_run.id)
     end
 
     # Process the job manually to simulate Solid Queue execution
     # Execute the job
     assert_nothing_raised do
-      ThreadAgent::ProcessWorkflowJob.perform_now(workflow_run.id)
+      Agents::ThreadCapture::ProcessJob.perform_now(workflow_run.id)
     end
 
     # Verify external API calls were made in correct sequence
@@ -142,7 +142,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
 
     # Enqueue and execute job
     assert_nothing_raised do
-      ThreadAgent::ProcessWorkflowJob.perform_now(workflow_run.id)
+      Agents::ThreadCapture::ProcessJob.perform_now(workflow_run.id)
     end
 
     # Verify failure was handled gracefully
@@ -169,7 +169,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
 
     # Execute job and verify it eventually succeeds
     assert_nothing_raised do
-      ThreadAgent::ProcessWorkflowJob.perform_now(workflow_run.id)
+      Agents::ThreadCapture::ProcessJob.perform_now(workflow_run.id)
     end
 
     workflow_run.reload
@@ -189,7 +189,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
 
     # Job should handle this gracefully
     assert_nothing_raised do
-      ThreadAgent::ProcessWorkflowJob.perform_now(workflow_run.id)
+      Agents::ThreadCapture::ProcessJob.perform_now(workflow_run.id)
     end
 
     workflow_run.reload
@@ -206,7 +206,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
 
     # Capture log output during execution
     log_output = capture_logs do
-      ThreadAgent::ProcessWorkflowJob.perform_now(workflow_run.id)
+      Agents::ThreadCapture::ProcessJob.perform_now(workflow_run.id)
     end
 
     # Verify status progression and logging
@@ -227,7 +227,7 @@ class ThreadAgentWorkflowSystemTest < ApplicationSystemTestCase
     # All log entries should contain workflow context
     log_entries.each do |entry|
       assert_equal workflow_run.id, entry["workflow_run_id"]
-      assert_includes [ "ThreadAgent::ProcessWorkflowJob", "ThreadAgent::WorkflowOrchestrator" ], entry["job_class"] || entry["service_class"]
+      assert_includes [ "Agents::ThreadCapture::ProcessJob", "Agents::ThreadCapture::Orchestrator" ], entry["job_class"] || entry["service_class"]
     end
   end
 

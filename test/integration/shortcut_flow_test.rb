@@ -7,7 +7,7 @@ class ShortcutFlowTest < ActionDispatch::IntegrationTest
     ENV["SLACK_SIGNING_SECRET"] = "test-secret"
     ENV["THREAD_AGENT_SLACK_BOT_TOKEN"] = "xoxb-test-token"
     ENV["THREAD_AGENT_SLACK_SIGNING_SECRET"] = "test-secret"
-    ThreadAgent.reset_configuration!
+    AppConfig.reset_from_env!
 
     @workspace = create(:notion_workspace, slack_team_id: "T123456")
     @database = create(:notion_database, notion_workspace: @workspace)
@@ -80,7 +80,7 @@ class ShortcutFlowTest < ActionDispatch::IntegrationTest
          headers: valid_headers(timestamp2, modal_payload)
 
     assert_response :success
-    assert_enqueued_jobs 1, only: ThreadAgent::ProcessWorkflowJob
+    assert_enqueued_jobs 1, only: Agents::ThreadCapture::ProcessJob
   end
 
   test "handles missing workspace error" do

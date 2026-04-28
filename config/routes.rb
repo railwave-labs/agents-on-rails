@@ -1,9 +1,14 @@
 Rails.application.routes.draw do
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
-  # Thread Agent namespace for future gem extraction
+  # Webhook ingress
+  namespace :webhooks do
+    post "slack", to: "slack#create", defaults: { format: :json }
+  end
+
+  # Legacy route kept during refactor — remove once all integrations point to /webhooks/slack
   namespace :thread_agent do
-    post "webhooks/slack", to: "webhooks#slack", defaults: { format: :json }
+    post "webhooks/slack", to: "/webhooks/slack#create", defaults: { format: :json }
   end
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

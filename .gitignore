@@ -41,3 +41,6 @@
 .env
 !.env.example
 .cursor/scratch
+
+.DS_Store
+**/.DS_Store
